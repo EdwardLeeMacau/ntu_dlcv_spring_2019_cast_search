@@ -11,9 +11,13 @@ wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download
 mkdir ./WIDER
 
 # Unzip the downloaded zip file
-unzip ./trainset.zip -d ./WIDER/train
-unzip ./valset.zip -d ./WIDER/val
-unzip ./testset.zip -d ./WIDER/test
+unzip ./trainset.zip -d ./WIDER
+unzip ./valset.zip -d ./WIDER
+unzip ./testset.zip -d ./WIDER
+
+mv ./WIDER/WIDER_train ./WIDER/train
+mv ./WIDER/WIDER_val ./WIDER/val
+mv ./WIDER/WIDER_test ./WIDER/test
 
 # Remove the downloaded zip file
 rm ./trainset.zip
