@@ -1,12 +1,36 @@
+"""
+  FileName     [ demo.py ]
+  PackageName  [ layumi/Person_reID_baseline_pytorch ]
+  Synopsis     [ Generate 1 images sequence to demo the Person_reID effect/ ]
+
+  Dataset:
+  - Market1501
+
+  Library:
+  - apex: A PyTorch Extension, Tools for easy mixed precision and distributed training in Pytorch
+          https://github.com/NVIDIA/apex
+  - yaml: A human-readable data-serialization language, and commonly used for configuration files.
+
+  Pretrain network:
+  - PCB:
+  - DenseNet:
+  - NAS:
+  - ResNet: 
+"""
+
 import argparse
+import os
+
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 import scipy.io
 import torch
-import numpy as np
-import os
 from torchvision import datasets
-import matplotlib
+
 matplotlib.use('agg')
-import matplotlib.pyplot as plt
+
+
 #######################################################################
 # Evaluate
 parser = argparse.ArgumentParser(description='Demo')
@@ -18,13 +42,14 @@ data_dir = opts.test_dir
 image_datasets = {x: datasets.ImageFolder( os.path.join(data_dir,x) ) for x in ['gallery','query']}
 
 #####################################################################
-#Show result
 def imshow(path, title=None):
-    """Imshow for Tensor."""
+    """ Imshow for Tensor. """
     im = plt.imread(path)
     plt.imshow(im)
+
     if title is not None:
         plt.title(title)
+    
     plt.pause(0.001)  # pause a bit so that plots are updated
 
 ######################################################################
@@ -51,9 +76,18 @@ gallery_feature = gallery_feature.cuda()
 #######################################################################
 # sort the images
 def sort_img(qf, ql, qc, gf, gl, gc):
+    """
+      Params:
+      - qf: Query
+      - ql:
+      - qc: Camera_index
+      - gf:
+      - gl:
+      - gc:
+    """
     query = qf.view(-1,1)
     # print(query.shape)
-    score = torch.mm(gf,query)
+    score = torch.mm(gf, query)
     score = score.squeeze(1).cpu()
     score = score.numpy()
     # predict index
@@ -72,39 +106,42 @@ def sort_img(qf, ql, qc, gf, gl, gc):
 
     mask = np.in1d(index, junk_index, invert=True)
     index = index[mask]
+    
     return index
 
 i = opts.query_index
 index = sort_img(query_feature[i],query_label[i],query_cam[i],gallery_feature,gallery_label,gallery_cam)
 
-########################################################################
+#-------------------------------
 # Visualize the rank result
-
-query_path, _ = image_datasets['query'].imgs[i]
-query_label = query_label[i]
-print(query_path)
-print('Top 10 images are as follow:')
-try: # Visualize Ranking Result 
-    # Graphical User Interface is needed
-    fig = plt.figure(figsize=(16,4))
-    ax = plt.subplot(1,11,1)
-    ax.axis('off')
-    imshow(query_path,'query')
-    for i in range(10):
-        ax = plt.subplot(1,11,i+2)
+# ------------------------------
+if __name__ == "__main__":
+    query_path, _ = image_datasets['query'].imgs[i]
+    query_label = query_label[i]
+    print(query_path)
+    print('Top 10 images are as follow:')
+    
+    try: # Visualize Ranking Result 
+        # Graphical User Interface is needed
+        fig = plt.figure(figsize=(16,4))
+        ax = plt.subplot(1,11,1)
         ax.axis('off')
-        img_path, _ = image_datasets['gallery'].imgs[index[i]]
-        label = gallery_label[index[i]]
-        imshow(img_path)
-        if label == query_label:
-            ax.set_title('%d'%(i+1), color='green')
-        else:
-            ax.set_title('%d'%(i+1), color='red')
-        print(img_path)
-except RuntimeError:
-    for i in range(10):
-        img_path = image_datasets.imgs[index[i]]
-        print(img_path[0])
-    print('If you want to see the visualization of the ranking result, graphical user interface is needed.')
+        imshow(query_path,'query')
+        for i in range(10):
+            ax = plt.subplot(1,11,i+2)
+            ax.axis('off')
+            img_path, _ = image_datasets['gallery'].imgs[index[i]]
+            label = gallery_label[index[i]]
+            imshow(img_path)
+            if label == query_label:
+                ax.set_title('%d'%(i+1), color='green')
+            else:
+                ax.set_title('%d'%(i+1), color='red')
+            print(img_path)
+    except RuntimeError:
+        for i in range(10):
+            img_path = image_datasets.imgs[index[i]]
+            print(img_path[0])
+        print('If you want to see the visualization of the ranking result, graphical user interface is needed.')
 
-fig.savefig("show.png")
+    fig.savefig("show.png")

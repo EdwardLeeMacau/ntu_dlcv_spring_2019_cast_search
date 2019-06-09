@@ -1,26 +1,50 @@
-# -*- coding: utf-8 -*-
+"""
+  FileName     [ train.py ]
+  PackageName  [ layumi/Person_reID_baseline_pytorch ]
+  Synopsis     [ Train the Person_reID model ]
 
-from __future__ import print_function, division
+  Dataset:
+  - Market1501
+
+  Dataloader: Default Image Loader
+
+  Library:
+  - apex: A PyTorch Extension, Tools for easy mixed precision and distributed training in Pytorch
+          https://github.com/NVIDIA/apex
+  - yaml: A human-readable data-serialization language, and commonly used for configuration files.
+
+  Pretrain network:
+  - PCB:
+  - DenseNet:
+  - NAS:
+  - ResNet: 
+"""
+
+from __future__ import division, print_function
 
 import argparse
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim import lr_scheduler
-from torch.autograd import Variable
-from torchvision import datasets, transforms
-import torch.backends.cudnn as cudnn
-import matplotlib
-matplotlib.use('agg')
-import matplotlib.pyplot as plt
+import math
+import os
 #from PIL import Image
 import time
-import os
-from model import ft_net, ft_net_dense, ft_net_NAS, PCB
-from random_erasing import RandomErasing
-import yaml
-import math
 from shutil import copyfile
+
+import matplotlib
+import matplotlib.pyplot as plt
+import torch
+import torch.backends.cudnn as cudnn
+import torch.nn as nn
+import torch.optim as optim
+from torch.autograd import Variable
+from torch.optim import lr_scheduler
+from torchvision import datasets, transforms
+
+import utils
+import yaml
+from model import PCB, ft_net, ft_net_dense, ft_net_NAS
+from random_erasing import RandomErasing
+
+matplotlib.use('agg')
 
 version =  torch.__version__
 #fp16
@@ -29,12 +53,11 @@ try:
     from apex import amp, optimizers
 except ImportError: # will be 3.x series
     print('This is not an error. If you want to use low precision, i.e., fp16, please install the apex with cuda support (https://github.com/NVIDIA/apex) and update pytorch to 1.0')
+
 ######################################################################
-# Options
-# --------
 parser = argparse.ArgumentParser(description='Training')
-parser.add_argument('--gpu_ids',default='0', type=str,help='gpu_ids: e.g. 0  0,1,2  0,2')
-parser.add_argument('--name',default='ft_ResNet50', type=str, help='output model name')
+parser.add_argument('--gpu_ids', default='0', type=str, help='gpu_ids: e.g. 0  0,1,2  0,2')
+parser.add_argument('--name', default='ft_ResNet50', type=str, help='output model name')
 parser.add_argument('--data_dir',default='../Market/pytorch',type=str, help='training dir path')
 parser.add_argument('--train_all', action='store_true', help='use all training data' )
 parser.add_argument('--color_jitter', action='store_true', help='use color jitter in training' )
@@ -64,11 +87,10 @@ for str_id in str_ids:
 if len(gpu_ids)>0:
     torch.cuda.set_device(gpu_ids[0])
     cudnn.benchmark = True
-######################################################################
-# Load Data
-# ---------
-#
 
+# ---------------------------------
+# Dataaugmentation setting
+# ---------------------------------
 transform_train_list = [
         #transforms.RandomResizedCrop(size=128, scale=(0.75,1.0), ratio=(0.75,1.3333), interpolation=3), #Image.BICUBIC)
         transforms.Resize((256,128), interpolation=3),
@@ -98,7 +120,7 @@ if opt.PCB:
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ]
 
-if opt.erasing_p>0:
+if opt.erasing_p > 0:
     transform_train_list = transform_train_list +  [RandomErasing(probability = opt.erasing_p, mean=[0.0, 0.0, 0.0])]
 
 if opt.color_jitter:
@@ -127,11 +149,13 @@ dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=opt.
 dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
 class_names = image_datasets['train'].classes
 
+print(class_names)
+
 use_gpu = torch.cuda.is_available()
 
 since = time.time()
 inputs, classes = next(iter(dataloaders['train']))
-print(time.time()-since)
+print(time.time() - since)
 ######################################################################
 # Training the model
 # ------------------
@@ -152,13 +176,17 @@ y_err = {}
 y_err['train'] = []
 y_err['val'] = []
 
+utils.details(opt)
+
 def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
     since = time.time()
 
     #best_model_wts = model.state_dict()
     #best_acc = 0.0
+
+    # Warm starting training technique.
     warm_up = 0.1 # We start from the 0.1*lrRate
-    warm_iteration = round(dataset_sizes['train']/opt.batchsize)*opt.warm_epoch # first 5 epoch
+    warm_iteration = round(dataset_sizes['train'] / opt.batchsize) * opt.warm_epoch # first 5 epoch
 
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -168,29 +196,29 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
         for phase in ['train', 'val']:
             if phase == 'train':
                 scheduler.step()
-                model.train(True)  # Set model to training mode
+                model.train()
             else:
-                model.train(False)  # Set model to evaluate mode
+                model.eval()
 
             running_loss = 0.0
             running_corrects = 0.0
             # Iterate over data.
-            for data in dataloaders[phase]:
-                # get the inputs
-                inputs, labels = data
-                now_batch_size,c,h,w = inputs.shape
+            for index, (inputs, labels) in enumerate(dataloaders[phase], 1):
+                now_batch_size, c, h, w = inputs.shape
+                
                 if now_batch_size<opt.batchsize: # skip the last batch
+                    # equal to dataloader.drop_last = True
                     continue
-                #print(inputs.shape)
+                # print(inputs.shape)
+                
                 # wrap them in Variable
                 if use_gpu:
-                    inputs = Variable(inputs.cuda().detach())
-                    labels = Variable(labels.cuda().detach())
-                else:
-                    inputs, labels = Variable(inputs), Variable(labels)
+                    inputs = inputs.cuda()
+                    labels = labels.cuda()
+
                 # if we use low precision, input also need to be fp16
-                #if fp16:
-                #    inputs = inputs.half()
+                # if fp16:
+                #     inputs = inputs.half()
  
                 # zero the parameter gradients
                 optimizer.zero_grad()
@@ -277,15 +305,18 @@ x_epoch = []
 fig = plt.figure()
 ax0 = fig.add_subplot(121, title="loss")
 ax1 = fig.add_subplot(122, title="top1err")
+
 def draw_curve(current_epoch):
     x_epoch.append(current_epoch)
     ax0.plot(x_epoch, y_loss['train'], 'bo-', label='train')
     ax0.plot(x_epoch, y_loss['val'], 'ro-', label='val')
     ax1.plot(x_epoch, y_err['train'], 'bo-', label='train')
     ax1.plot(x_epoch, y_err['val'], 'ro-', label='val')
+
     if current_epoch == 0:
         ax0.legend()
         ax1.legend()
+
     fig.savefig( os.path.join('./model',name,'train.jpg'))
 
 ######################################################################
@@ -295,9 +326,9 @@ def save_network(network, epoch_label):
     save_filename = 'net_%s.pth'% epoch_label
     save_path = os.path.join('./model',name,save_filename)
     torch.save(network.cpu().state_dict(), save_path)
+
     if torch.cuda.is_available():
         network.cuda(gpu_ids[0])
-
 
 ######################################################################
 # Finetuning the convnet
@@ -361,26 +392,27 @@ exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=40, gamma=0.1)
 #
 # It should take around 1-2 hours on GPU. 
 #
-dir_name = os.path.join('./model',name)
-if not os.path.isdir(dir_name):
-    os.mkdir(dir_name)
-#record every run
-copyfile('./train.py', dir_name+'/train.py')
-copyfile('./model.py', dir_name+'/model.py')
 
-# save opts
-with open('%s/opts.yaml'%dir_name,'w') as fp:
-    yaml.dump(vars(opt), fp, default_flow_style=False)
+if __name__ == "__main__":
+    dir_name = os.path.join('./model',name)
+    if not os.path.isdir(dir_name):
+        os.mkdir(dir_name)
 
-# model to gpu
-model = model.cuda()
-if fp16:
-    #model = network_to_half(model)
-    #optimizer_ft = FP16_Optimizer(optimizer_ft, static_loss_scale = 128.0)
-    model, optimizer_ft = amp.initialize(model, optimizer_ft, opt_level = "O1")
+    #record every run
+    copyfile('./train.py', dir_name+'/train.py')
+    copyfile('./model.py', dir_name+'/model.py')
 
-criterion = nn.CrossEntropyLoss()
+    # save opts
+    with open('%s/opts.yaml'%dir_name,'w') as fp:
+        yaml.dump(vars(opt), fp, default_flow_style=False)
 
-model = train_model(model, criterion, optimizer_ft, exp_lr_scheduler,
-                       num_epochs=60)
+    # model to gpu
+    model = model.cuda()
+    if fp16:
+        #model = network_to_half(model)
+        #optimizer_ft = FP16_Optimizer(optimizer_ft, static_loss_scale = 128.0)
+        model, optimizer_ft = amp.initialize(model, optimizer_ft, opt_level = "O1")
 
+    criterion = nn.CrossEntropyLoss()
+
+    model = train_model(model, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=60)

@@ -1,9 +1,30 @@
+"""
+  FileName     [ model.py ]
+  PackageName  [ layumi/Person_reID_baseline_pytorch ]
+  Synopsis     [ Model class ]
+
+  Library:
+  - apex: A PyTorch Extension, Tools for easy mixed precision and distributed training in Pytorch
+          https://github.com/NVIDIA/apex
+  - yaml: A human-readable data-serialization language, and commonly used for configuration files.
+
+  Pretrain network:
+  - PCB: Part-based Convolutional Baseline
+         https://arxiv.org/abs/1711.09349
+         Beyond Part Models: Person Retrieval with Refined Part Pooling (and a Strong Convolutional Baseline)
+  - DenseNet:
+  - NAS:
+  - ResNet: 
+"""
+
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
 from torch.nn import init
 from torchvision import models
-from torch.autograd import Variable
+
 import pretrainedmodels
+
 
 ######################################################################
 def weights_init_kaiming(m):
@@ -51,6 +72,7 @@ class ClassBlock(nn.Module):
 
         self.add_block = add_block
         self.classifier = classifier
+        
     def forward(self, x):
         x = self.add_block(x)
         if self.return_f:
@@ -230,14 +252,9 @@ class PCB_test(nn.Module):
         x = self.avgpool(x)
         y = x.view(x.size(0),x.size(1),x.size(2))
         return y
-'''
-# debug model structure
-# Run this code with:
-python model.py
-'''
-if __name__ == '__main__':
-# Here I left a simple forward function.
-# Test the model, before you train it. 
+
+def model_structure_unittest():
+    """ Debug model structure """
     net = ft_net(751, stride=1)
     net.classifier = nn.Sequential()
     print(net)
@@ -245,3 +262,6 @@ if __name__ == '__main__':
     output = net(input)
     print('net output size:')
     print(output.shape)
+
+if __name__ == "__main__":
+    model_structure_unittest()

@@ -1,10 +1,17 @@
+"""
+  FileName     [ random_erasing.py ]
+  PackageName  [ layumi/Person_reID_baseline_pytorch ]
+  Synopsis     [ Augmentation methods: Random erase a rectangle region ]
+"""
+
 from __future__ import absolute_import
+
+import math
+#from PIL import Image
+import random
 
 from torchvision.transforms import *
 
-#from PIL import Image
-import random
-import math
 #import numpy as np
 #import torch
 
