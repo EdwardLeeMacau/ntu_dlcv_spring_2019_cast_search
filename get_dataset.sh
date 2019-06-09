@@ -37,6 +37,6 @@ unzip "$1/train.zip" -d $1
 unzip "$1/val.zip" -d $1
 unzip "$1/test.zip" -d $1
 
-rm ./train.zip
-rm ./val.zip
-rm ./test.zip
+rm ./$1/train.zip
+rm ./$1/val.zip
+rm ./$1/test.zip

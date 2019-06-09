@@ -7,6 +7,7 @@
   - To tide up the codes, add some frequency used function here.
     (by Edward Lee)
 """
+import torch 
 
 def selectDevice():
     use_cuda = torch.cuda.is_available()
