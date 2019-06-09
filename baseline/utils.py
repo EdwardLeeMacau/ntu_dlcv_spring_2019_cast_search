@@ -8,6 +8,12 @@
     (by Edward Lee)
 """
 
+def selectDevice():
+    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
+
+    return device
+
 def details(opt, path=None):
     """
       Show and marked down the training settings

@@ -7,6 +7,8 @@
   - apex: A PyTorch Extension, Tools for easy mixed precision and distributed training in Pytorch
           https://github.com/NVIDIA/apex
   - yaml: A human-readable data-serialization language, and commonly used for configuration files.
+  - pretrainedmodels: 
+          Install: pip install pretrainedmodels
 
   Pretrain network:
   - PCB: Part-based Convolutional Baseline
@@ -26,7 +28,6 @@ from torchvision import models
 import pretrainedmodels
 
 
-######################################################################
 def weights_init_kaiming(m):
     classname = m.__class__.__name__
     # print(classname)
@@ -48,20 +49,23 @@ def weights_init_classifier(m):
 # Defines the new fc layer and classification layer
 # |--Linear--|--bn--|--relu--|--Linear--|
 class ClassBlock(nn.Module):
-    def __init__(self, input_dim, class_num, droprate, relu=False, bnorm=True, num_bottleneck=512, linear=True, return_f = False):
+    def __init__(self, input_dim, class_num, droprate, relu=False, bnorm=True, num_bottleneck=512, linear=True, return_f=False):
         super(ClassBlock, self).__init__()
         self.return_f = return_f
         add_block = []
+        
         if linear:
             add_block += [nn.Linear(input_dim, num_bottleneck)]
         else:
             num_bottleneck = input_dim
+        
         if bnorm:
             add_block += [nn.BatchNorm1d(num_bottleneck)]
         if relu:
             add_block += [nn.LeakyReLU(0.1)]
         if droprate>0:
             add_block += [nn.Dropout(p=droprate)]
+        
         add_block = nn.Sequential(*add_block)
         add_block.apply(weights_init_kaiming)
 
@@ -75,13 +79,14 @@ class ClassBlock(nn.Module):
         
     def forward(self, x):
         x = self.add_block(x)
+        
         if self.return_f:
             f = x
             x = self.classifier(x)
-            return x,f
-        else:
-            x = self.classifier(x)
-            return x
+            return x, f
+        
+        x = self.classifier(x)
+        return x
 
 # Define the ResNet50-based Model
 class ft_net(nn.Module):
@@ -89,10 +94,11 @@ class ft_net(nn.Module):
     def __init__(self, class_num, droprate=0.5, stride=2):
         super(ft_net, self).__init__()
         model_ft = models.resnet50(pretrained=True)
-        # avg pooling to global pooling
+
         if stride == 1:
             model_ft.layer4[0].downsample[0].stride = (1,1)
             model_ft.layer4[0].conv2.stride = (1,1)
+        
         model_ft.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.model = model_ft
         self.classifier = ClassBlock(2048, class_num, droprate)
@@ -183,7 +189,7 @@ class ft_net_middle(nn.Module):
 
 # Part Model proposed in Yifan Sun etal. (2018)
 class PCB(nn.Module):
-    def __init__(self, class_num ):
+    def __init__(self, class_num):
         super(PCB, self).__init__()
 
         self.part = 6 # We cut the pool5 to 6 parts
@@ -221,20 +227,19 @@ class PCB(nn.Module):
             predict[i] = c(part[i])
 
         # sum prediction
-        #y = predict[0]
-        #for i in range(self.part-1):
-        #    y += predict[i+1]
         y = []
         for i in range(self.part):
             y.append(predict[i])
+
         return y
 
 class PCB_test(nn.Module):
-    def __init__(self,model):
+    def __init__(self, model):
         super(PCB_test,self).__init__()
+
         self.part = 6
         self.model = model.model
-        self.avgpool = nn.AdaptiveAvgPool2d((self.part,1))
+        self.avgpool = nn.AdaptiveAvgPool2d((self.part, 1))
         # remove the final downsample
         self.model.layer4[0].downsample[0].stride = (1,1)
         self.model.layer4[0].conv2.stride = (1,1)
@@ -250,7 +255,8 @@ class PCB_test(nn.Module):
         x = self.model.layer3(x)
         x = self.model.layer4(x)
         x = self.avgpool(x)
-        y = x.view(x.size(0),x.size(1),x.size(2))
+        y = x.view(x.size(0), x.size(1), x.size(2))
+        
         return y
 
 def model_structure_unittest():
