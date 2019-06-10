@@ -306,7 +306,7 @@ def draw_curve(current_epoch, save_jpg='train.jpg'):
 # Save model
 #---------------------------
 def save_network(network, epoch):
-    save_path = os.path.join('./model', name, 'net_{}.pth'.format(str(epoch).zfill(num_epoch)))
+    save_path = os.path.join('./model', name, 'net_{}.pth'.format(str(epoch).zfill(num_epochs)))
     torch.save(network.cpu().state_dict(), save_path)
 
     if torch.cuda.is_available():
@@ -377,8 +377,9 @@ else:
 
 if __name__ == "__main__":
     dir_name = os.path.join('./model', name)
-    if not os.path.isdir(dir_name):
-        os.mkdir(dir_name)
+    os.makedirs(dir_name,mode=0o777, exist_ok=True)
+    # if not os.path.isdir(dir_name):
+    #     os.mkdir(dir_name)
 
     # record every run
     copyfile('./train.py', os.path.join(dir_name, 'train.py'))
