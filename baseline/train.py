@@ -21,6 +21,7 @@
   - ResNet: 
 
   Usage:
+  - python3 train.py --name PCB --PCB --lr 0.02 --batchsize 16 --debug
   - python3 train.py --name PCB --PCB --lr 0.02 --batchsize 16
 """
 
@@ -79,6 +80,7 @@ parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
 parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
 parser.add_argument('--PCB', action='store_true', help='use PCB+ResNet50' )
 parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
+parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
 opt = parser.parse_args()
 
 fp16 = opt.fp16
@@ -173,7 +175,7 @@ y_err = {}
 y_err['train'] = []
 y_err['val'] = []
 
-def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=10):
+def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=10, debug=False):
     since = time.time()
 
     # best_model_wts = model.state_dict()
@@ -183,6 +185,8 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq
     warm_up = 0.1 # We start from the 0.1*lrRate
     warm_iteration = round(len(dataloaders['train'].dataset) / opt.batchsize) * opt.warm_epoch # first 5 epoch
 
+    if debug:
+        model.debug_mode()
     for epoch in range(1, num_epochs + 1):
         scheduler.step()
         
@@ -405,4 +409,4 @@ if __name__ == "__main__":
     # Decay LR by a factor of 0.1 every 40 epochs
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=40, gamma=0.1)
 
-    model = train_model(model, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=60, save_freq=2)
+    model = train_model(model, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=60, save_freq=2, debug=opt.debug)

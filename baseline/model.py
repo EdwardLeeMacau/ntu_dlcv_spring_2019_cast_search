@@ -133,7 +133,7 @@ class ft_net(nn.Module):
 
         if self.debug:
             print("shape after classifier x in ft_net : {}".format(x.shape))
-        print()
+            print()
         return x
 
 # Define the DenseNet121-based Model
@@ -170,7 +170,7 @@ class ft_net_dense(nn.Module):
 
         if self.debug:
             print("shape after classifier x in ft_net_dense : {}".format(x.shape))
-        print()
+            print()
         return x
 
 # Define the NAS-based Model
@@ -211,7 +211,7 @@ class ft_net_NAS(nn.Module):
 
         if self.debug:
             print("shape after classifier x in ft_net_NAS : {}".format(x.shape))
-        print()
+            print()
 
         return x
     
@@ -261,7 +261,7 @@ class ft_net_middle(nn.Module):
 
         if self.debug:
             print("shape after classifier x in ft_net_middle : {}".format(x.shape))
-        print()
+            print()
         return x
 
 # Part Model proposed in Yifan Sun etal. (2018)
@@ -321,7 +321,7 @@ class PCB(nn.Module):
 
         if self.debug:
             print("list of 6 parts prediction in PCB : {}".format(y))
-        print()
+            print()
 
         return y
 
@@ -361,7 +361,7 @@ class PCB_test(nn.Module):
         
         if self.debug:
             print("shape of output (after view) x in PCB_test : {}".format(x.shape))
-        print()
+            print()
 
         return y
 
