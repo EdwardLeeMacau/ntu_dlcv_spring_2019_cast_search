@@ -1,3 +1,9 @@
+"""
+  FileName     [ eval.py ]
+  PackageName  [ final ]
+  Synopsis     [ To evaluate the model performance in IMDb dataset with mAP. ]
+"""
+
 import numpy
 import os
 import os.path as osp
