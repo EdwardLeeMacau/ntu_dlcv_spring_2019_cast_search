@@ -16,6 +16,9 @@
   - DenseNet:
   - NAS:
   - ResNet: 
+
+  Usage:
+  - python3 test.py --name ft_net_dense --which_epoch 60
 """
 
 from __future__ import division, print_function

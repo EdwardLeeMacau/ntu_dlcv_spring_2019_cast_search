@@ -19,6 +19,9 @@
   - DenseNet:
   - NAS:
   - ResNet: 
+
+  Usage:
+  - python3 train.py --name PCB --PCB --lr 0.02 --batchsize 16
 """
 
 from __future__ import division, print_function
@@ -170,7 +173,7 @@ y_err = {}
 y_err['train'] = []
 y_err['val'] = []
 
-def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
+def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=10):
     since = time.time()
 
     # best_model_wts = model.state_dict()
@@ -258,7 +261,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
             if phase == 'val':
                 last_model_wts = model.state_dict()
 
-                if epoch % 10 == 0:
+                if epoch % save_freq == 0:
                     save_network(model, epoch)
 
                 draw_curve(epoch)
@@ -402,4 +405,4 @@ if __name__ == "__main__":
     # Decay LR by a factor of 0.1 every 40 epochs
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=40, gamma=0.1)
 
-    model = train_model(model, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=60)
+    model = train_model(model, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=60, save_freq=2)
