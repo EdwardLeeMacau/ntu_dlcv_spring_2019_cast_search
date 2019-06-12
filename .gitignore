@@ -1,11 +1,15 @@
 
-/__pycache__/*
+# baseline
 /baseline/__pycache__/*
 /baseline/Market/*
 /baseline/model/*
-!/baseline/model/.gitkeep
-
 /baseline/mat/*
 /baseline/demo_output/*
+!/baseline/model/.gitkeep
 
+# IMDb
+/__pycache__/*
 /dataset/*
+/IMDb/*
+/model/*
+/mat/*

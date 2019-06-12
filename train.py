@@ -1,12 +1,12 @@
 """
   FileName     [ train.py ]
-  PackageName  [ layumi/Person_reID_baseline_pytorch ]
+  PackageName  [ final ]
   Synopsis     [ Train the Person_reID model ]
 
   Dataset:
-  - Market1501
+  - IMDb
 
-  Dataloader: Default Image Loader
+  Dataloader: Customized Image Loader
 
   Library:
   - apex: A PyTorch Extension, Tools for easy mixed precision and distributed training in Pytorch
@@ -23,6 +23,7 @@
   Usage:
   - python3 train.py --name PCB --PCB --lr 0.02 --batchsize 16 --debug
   - python3 train.py --name PCB --PCB --lr 0.02 --batchsize 16
+  - python3 train.py --name ft_net_dense
 """
 
 from __future__ import division, print_function
@@ -45,11 +46,12 @@ from torch.nn import functional as F
 from torch.autograd import Variable
 from torch.optim import lr_scheduler
 from torchvision import datasets, transforms
-
 import utils
 import yaml
+
 from model import PCB, ft_net, ft_net_dense, ft_net_NAS
 from random_erasing import RandomErasing
+from imdb import IMDbTrainset
 
 matplotlib.use('agg')
 
@@ -136,8 +138,13 @@ data_transforms = {
 }
 
 image_datasets = {}
-image_datasets['train'] = datasets.ImageFolder(opt.trainset, data_transforms['train'])
-image_datasets['val'] = datasets.ImageFolder(opt.valset, data_transforms['val'])
+image_datasets['train'] = IMDbTrainset(
+    movie_path="./IMDb/train", feature_path=None, label_path="./IMDb/train_GT.json", 
+    debug=opt.debug, transform=data_transforms['train'])
+image_datasets['val'] = IMDbTrainset(
+    movie_path="./IMDb/val", feature_path=None, label_path="./IMDb/val_GT.json", 
+    debug=opt.debug, transform=data_transforms['val'])
+
 
 # pin_memory = True for good GPU (ref : https://blog.csdn.net/tsq292978891/article/details/80454568 )
 dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=opt.batchsize, drop_last=True,
@@ -149,13 +156,13 @@ class_names = image_datasets['train'].classes
 print(class_names)
 
 use_gpu = torch.cuda.is_available()
-DEVICE = utils.selectDevice()
+# DEVICE = utils.selectDevice()
 
 # Show I/O time delay for 1 iterations 
 # since = time.time()
 inputs_train, classes_train = next(iter(dataloaders['train']))
 inputs_val, classes_val = next(iter(dataloaders['val']))
-print('inputs_train :', inputs_train.shape)
+print('\ninputs_train :', inputs_train.shape)
 print('classes_train :', classes_train.shape, '\n',  classes_train, '\n')
 print('inputs_val :', inputs_val.shape)
 print('classes_val :', classes_val.shape, '\n', classes_val, '\n')
