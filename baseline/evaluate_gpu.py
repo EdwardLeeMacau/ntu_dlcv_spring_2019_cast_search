@@ -15,7 +15,7 @@ import scipy.io
 import torch
 
 parser = argparse.ArgumentParser(description='Evaluate_GPU')
-parser.add_argument('--name', default='ft_ResNet50', type=str, help='load model path')
+parser.add_argument('--name', default='ft_net_dense', type=str, help='load model path')
 
 opt = parser.parse_args()
 

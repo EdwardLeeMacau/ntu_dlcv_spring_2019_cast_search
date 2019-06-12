@@ -5,7 +5,7 @@
 /baseline/model/*
 !/baseline/model/.gitkeep
 
-/dataset/*
-/mat/*
+/baseline/mat/*
+/baseline/demo_output/*
 
-*.mat
+/dataset/*

@@ -18,7 +18,7 @@
   - ResNet: 
 
   Usage:
-  - python3 test.py --name ft_net_dense --which_epoch 60
+  - python3 test.py --name ft_net_dense --which_epoch last --batchsize 32 --debug
   - python3 test.py --name PCB --which_epoch 40 --batchsize 16 --debug
 """
 
@@ -54,7 +54,7 @@ parser = argparse.ArgumentParser(description='Testing')
 parser.add_argument('--gpu_ids',default='0', type=str,help='gpu_ids: e.g. 0  0,1,2  0,2')
 parser.add_argument('--which_epoch',default='last', type=str, help='0,1,2,3...or last')
 parser.add_argument('--test_dir',default='./Market/pytorch',type=str, help='./test_data')
-parser.add_argument('--name', default='ft_ResNet50', type=str, help='save model path')
+parser.add_argument('--name', default='ft_net_dense', type=str, help='save model path')
 parser.add_argument('--batchsize', default=256, type=int, help='batchsize')
 parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
 parser.add_argument('--PCB', action='store_true', help='use PCB' )
@@ -315,6 +315,10 @@ scipy.io.savemat('./mat/pytorch_result_{}.mat'.format(opt.name),result)
 
 print(opt.name)
 result = './model/%s/result.txt'%opt.name
+
+# with open('evaluate_gpu.py', 'r') as file:
+#     exec(file.read())
+#     # TODO: pass arguments
 os.system('python3.7 evaluate_gpu.py --name {} | tee -a {}'.format(opt.name, result))
 
 if opt.multi:

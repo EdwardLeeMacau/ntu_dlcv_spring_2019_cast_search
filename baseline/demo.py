@@ -16,6 +16,9 @@
   - DenseNet:
   - NAS:
   - ResNet: 
+
+  Usage:
+  - python3 demo.py --name ft_net_dense
 """
 
 import argparse
@@ -28,7 +31,7 @@ import scipy.io
 import torch
 from torchvision import datasets
 
-matplotlib.use('agg')
+# matplotlib.use('Agg')
 
 
 #######################################################################
@@ -36,7 +39,7 @@ matplotlib.use('agg')
 parser = argparse.ArgumentParser(description='Demo')
 parser.add_argument('--query_index', default=777, type=int, help='test_image_index')
 parser.add_argument('--test_dir',default='./Market/pytorch',type=str, help='./test_data')
-parser.add_argument('--name', default='ft_ResNet50', type=str, help='load model path')
+parser.add_argument('--name', default='ft_net_dense', type=str, help='load model path')
 
 opts = parser.parse_args()
 
@@ -44,7 +47,7 @@ data_dir = opts.test_dir
 image_datasets = {x: datasets.ImageFolder( os.path.join(data_dir,x) ) for x in ['gallery','query']}
 
 #####################################################################
-def imshow(path, title=None):
+def imshow(path, title=None, pause_time=0.5):
     """ Imshow for Tensor. """
     im = plt.imread(path)
     plt.imshow(im)
@@ -52,7 +55,7 @@ def imshow(path, title=None):
     if title is not None:
         plt.title(title)
     
-    plt.pause(0.001)  # pause a bit so that plots are updated
+    plt.pause(pause_time)  # pause a bit so that plots are updated
 
 ######################################################################
 result = scipy.io.loadmat('./mat/pytorch_result_{}.mat'.format(opts.name))
@@ -146,4 +149,6 @@ if __name__ == "__main__":
             print(img_path[0])
         print('If you want to see the visualization of the ranking result, graphical user interface is needed.')
 
-    fig.savefig("show.png")
+    os.makedirs('./demo_output/', mode=0o777, exist_ok=True)
+    fig.savefig("./demo_output/show.png")
+    print("\nresult saved to path : ./demo_output/show.png\n")

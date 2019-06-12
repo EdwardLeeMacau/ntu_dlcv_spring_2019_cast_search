@@ -64,7 +64,7 @@ except ImportError: # will be 3.x series
 ######################################################################
 parser = argparse.ArgumentParser(description='Training')
 parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='')
-parser.add_argument('--name', default='ft_ResNet50', type=str, help='output model name')
+parser.add_argument('--name', default='ft_net_dense', type=str, help='output model name')
 parser.add_argument('--trainset', default='./Market/pytorch/train', type=str, help='Directory of training set.')
 parser.add_argument('--valset', default='./Market/pytorch/val', type=str, help='Directory of validation set')
 parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')

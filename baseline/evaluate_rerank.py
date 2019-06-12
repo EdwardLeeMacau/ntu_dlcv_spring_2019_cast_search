@@ -2,6 +2,9 @@
   FileName     [ evaluate_rerank.py ]
   PackageName  [ layumi/Person_reID_baseline_pytorch ]
   Synopsis     [ To evaluate the model performance ]
+
+  Usage:
+  - python3 evaluate_rerank.py --name PCB
 """
 
 import time
@@ -15,7 +18,7 @@ from re_ranking import re_ranking
 
 
 parser = argparse.ArgumentParser(description='Evaluate_GPU')
-parser.add_argument('--name', default='ft_ResNet50', type=str, help='load model path')
+parser.add_argument('--name', default='ft_net_dense', type=str, help='load model path')
 
 opt = parser.parse_args()
 
@@ -97,4 +100,4 @@ if __name__ == "__main__":
 
     CMC = CMC.float()
     CMC = CMC/len(query_label) #average CMC
-    print('top1:%f top5:%f top10:%f mAP:%f'%(CMC[0],CMC[4],CMC[9],ap/len(query_label)))
+    print('\ntop1:%f\ntop5:%f\ntop10:%f\nmAP:%f'%(CMC[0],CMC[4],CMC[9],ap/len(query_label)))
