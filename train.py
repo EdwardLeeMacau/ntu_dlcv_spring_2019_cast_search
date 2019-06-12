@@ -68,8 +68,8 @@ except ImportError: # will be 3.x series
 parser = argparse.ArgumentParser(description='Training')
 parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='')
 parser.add_argument('--name', default='ft_net_dense', type=str, help='output model name')
-parser.add_argument('--trainset', default='./Market/pytorch/train', type=str, help='Directory of training set.')
-parser.add_argument('--valset', default='./Market/pytorch/val', type=str, help='Directory of validation set')
+parser.add_argument('--trainset', default='./IMDb/train', type=str, help='Directory of training set.')
+parser.add_argument('--valset', default='./IMDb/val', type=str, help='Directory of validation set')
 parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
 parser.add_argument('--color_jitter', action='store_true', help='use color jitter in training' )
 parser.add_argument('--batchsize', default=32, type=int, help='batchsize')
@@ -139,10 +139,10 @@ data_transforms = {
 
 image_datasets = {}
 image_datasets['train'] = IMDbTrainset(
-    movie_path="./IMDb/train", feature_path=None, label_path="./IMDb/train_GT.json", 
+    movie_path=opt.trainset, feature_path=None, label_path=opt.trainset+"_GT.json", 
     debug=opt.debug, transform=data_transforms['train'])
 image_datasets['val'] = IMDbTrainset(
-    movie_path="./IMDb/val", feature_path=None, label_path="./IMDb/val_GT.json", 
+    movie_path=opt.valset, feature_path=None, label_path=opt.valset+"_GT.json", 
     debug=opt.debug, transform=data_transforms['val'])
 
 
