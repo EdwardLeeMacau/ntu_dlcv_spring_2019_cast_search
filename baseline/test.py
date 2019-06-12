@@ -19,6 +19,7 @@
 
   Usage:
   - python3 test.py --name ft_net_dense --which_epoch 60
+  - python3 test.py --name PCB --which_epoch 40 --batchsize 16 --debug
 """
 
 from __future__ import division, print_function
@@ -49,10 +50,10 @@ except ImportError: # will be 3.x series
     print('This is not an error. If you want to use low precision, i.e., fp16, please install the apex with cuda support (https://github.com/NVIDIA/apex) and update pytorch to 1.0')
 
 ######################################################################
-parser = argparse.ArgumentParser(description='Training')
+parser = argparse.ArgumentParser(description='Testing')
 parser.add_argument('--gpu_ids',default='0', type=str,help='gpu_ids: e.g. 0  0,1,2  0,2')
 parser.add_argument('--which_epoch',default='last', type=str, help='0,1,2,3...or last')
-parser.add_argument('--test_dir',default='../Market/pytorch',type=str, help='./test_data')
+parser.add_argument('--test_dir',default='./Market/pytorch',type=str, help='./test_data')
 parser.add_argument('--name', default='ft_ResNet50', type=str, help='save model path')
 parser.add_argument('--batchsize', default=256, type=int, help='batchsize')
 parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
@@ -60,6 +61,7 @@ parser.add_argument('--PCB', action='store_true', help='use PCB' )
 parser.add_argument('--multi', action='store_true', help='use multiple query' )
 parser.add_argument('--fp16', action='store_true', help='use fp16.' )
 parser.add_argument('--ms',default='1', type=str,help='multiple_scale: e.g. 1 1,1.1  1,1.1,1.2')
+parser.add_argument('--debug', action='store_true', help='use debug mode.' )
 
 opt = parser.parse_args()
 
@@ -154,7 +156,7 @@ def load_network(network):
       Params:
       - network: the instance of the Nerual Network
     """
-    save_path = os.path.join('./model',name,'net_%s.pth'%opt.which_epoch)
+    save_path = os.path.join('./model',name,'net_%s.pth'%opt.which_epoch.zfill(3))
     network.load_state_dict(torch.load(save_path))
 
     return network
@@ -295,6 +297,10 @@ model = model.eval()
 if use_gpu:
     model = model.cuda()
 
+# Set model to debug mode
+if opt.debug:
+    model.debug_mode()
+
 # Extract feature
 with torch.no_grad():
     gallery_feature = extract_feature(model,dataloaders['gallery'])
@@ -304,12 +310,13 @@ with torch.no_grad():
     
 # Save to Matlab for check
 result = {'gallery_f':gallery_feature.numpy(),'gallery_label':gallery_label,'gallery_cam':gallery_cam,'query_f':query_feature.numpy(),'query_label':query_label,'query_cam':query_cam}
-scipy.io.savemat('pytorch_result.mat',result)
+os.makedirs('./mat/', mode=0o777, exist_ok=True)
+scipy.io.savemat('./mat/pytorch_result_{}.mat'.format(opt.name),result)
 
 print(opt.name)
 result = './model/%s/result.txt'%opt.name
-os.system('python evaluate_gpu.py | tee -a %s'%result)
+os.system('python3.7 evaluate_gpu.py --name {} | tee -a {}'.format(opt.name, result))
 
 if opt.multi:
     result = {'mquery_f':mquery_feature.numpy(),'mquery_label':mquery_label,'mquery_cam':mquery_cam}
-    scipy.io.savemat('multi_query.mat',result)
+    scipy.io.savemat('./mat/multi_query_{}.mat'.format(opt.name),result)

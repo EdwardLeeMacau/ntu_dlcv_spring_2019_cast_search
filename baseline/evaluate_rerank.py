@@ -5,6 +5,7 @@
 """
 
 import time
+import argparse
 
 import numpy as np
 import scipy.io
@@ -12,6 +13,11 @@ import torch
 
 from re_ranking import re_ranking
 
+
+parser = argparse.ArgumentParser(description='Evaluate_GPU')
+parser.add_argument('--name', default='ft_ResNet50', type=str, help='load model path')
+
+opt = parser.parse_args()
 
 # This evaluate function is different with other evaluate functions
 def evaluate(score,ql,qc,gl,gc):
@@ -61,7 +67,7 @@ def compute_mAP(index, good_index, junk_index):
 
 ######################################################################
 if __name__ == "__main__":
-    result = scipy.io.loadmat('pytorch_result.mat')
+    result = scipy.io.loadmat('./mat/pytorch_result_{}.mat'.format(opt.name))
     query_feature = result['query_f']
     query_cam = result['query_cam'][0]
     query_label = result['query_label'][0]

@@ -6,3 +6,6 @@
 !/baseline/model/.gitkeep
 
 /dataset/*
+/mat/*
+
+*.mat

@@ -309,8 +309,8 @@ def draw_curve(current_epoch, save_jpg='train.jpg'):
 # Save model
 #---------------------------
 def save_network(network, epoch):
-    num_epochs = 3
-    save_path = os.path.join('./model', name, 'net_{}.pth'.format(str(epoch).zfill(num_epochs)))
+    num_fill = 3
+    save_path = os.path.join('./model', name, 'net_{}.pth'.format(str(epoch).zfill(num_fill)))
     torch.save(network.cpu().state_dict(), save_path)
 
     if torch.cuda.is_available():

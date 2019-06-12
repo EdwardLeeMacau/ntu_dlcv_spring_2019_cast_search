@@ -2,14 +2,22 @@
   FileName     [ evaluate_gpu.py ]
   PackageName  [ layumi/Person_reID_baseline_pytorch ]
   Synopsis     [ To evaluate the model performance ]
+
+  Usage:
+  - python3 evaluate_gpu.py --name PCB
 """
 
 import os
+import argparse
 
 import numpy as np
 import scipy.io
 import torch
 
+parser = argparse.ArgumentParser(description='Evaluate_GPU')
+parser.add_argument('--name', default='ft_ResNet50', type=str, help='load model path')
+
+opt = parser.parse_args()
 
 def evaluate(qf,ql,qc,gf,gl,gc):
     query = qf.view(-1,1)
@@ -65,7 +73,7 @@ def compute_mAP(index, good_index, junk_index):
 
 ######################################################################
 if __name__ == "__main__":
-    result = scipy.io.loadmat('pytorch_result.mat')
+    result = scipy.io.loadmat('./mat/pytorch_result_{}.mat'.format(opt.name))
     query_feature = torch.FloatTensor(result['query_f'])
     query_cam = result['query_cam'][0]
     query_label = result['query_label'][0]
@@ -73,10 +81,10 @@ if __name__ == "__main__":
     gallery_cam = result['gallery_cam'][0]
     gallery_label = result['gallery_label'][0]
 
-    multi = os.path.isfile('multi_query.mat')
+    multi = os.path.isfile('./mat/multi_query_{}.mat'.format(opt.name))
 
     if multi:
-        m_result = scipy.io.loadmat('multi_query.mat')
+        m_result = scipy.io.loadmat('./mat/multi_query_{}.mat'.format(opt.name))
         mquery_feature = torch.FloatTensor(m_result['mquery_f'])
         mquery_cam = m_result['mquery_cam'][0]
         mquery_label = m_result['mquery_label'][0]
@@ -85,7 +93,7 @@ if __name__ == "__main__":
     query_feature = query_feature.cuda()
     gallery_feature = gallery_feature.cuda()
 
-    print(query_feature.shape)
+    print("query_feature.shape :", query_feature.shape)
     CMC = torch.IntTensor(len(gallery_label)).zero_()
     ap = 0.0
     #print(query_label)
@@ -99,7 +107,7 @@ if __name__ == "__main__":
 
     CMC = CMC.float()
     CMC = CMC/len(query_label) #average CMC
-    print('Rank@1:%f Rank@5:%f Rank@10:%f mAP:%f'%(CMC[0],CMC[4],CMC[9],ap/len(query_label)))
+    print('\nRank@1:%f\nRank@5:%f\nRank@10:%f\nmAP:%f'%(CMC[0],CMC[4],CMC[9],ap/len(query_label)))
 
     # multiple-query
     CMC = torch.IntTensor(len(gallery_label)).zero_()

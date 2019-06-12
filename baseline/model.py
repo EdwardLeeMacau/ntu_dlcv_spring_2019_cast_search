@@ -91,8 +91,9 @@ class ClassBlock(nn.Module):
 # Define the ResNet50-based Model
 class ft_net(nn.Module):
 
-    def __init__(self, class_num, droprate=0.5, stride=2):
+    def __init__(self, class_num, droprate=0.5, stride=2, debug=False):
         super(ft_net, self).__init__()
+        self.debug = debug
         model_ft = models.resnet50(pretrained=True)
 
         if stride == 1:
@@ -103,7 +104,13 @@ class ft_net(nn.Module):
         self.model = model_ft
         self.classifier = ClassBlock(2048, class_num, droprate)
 
+    def debug_mode(self):
+        self.debug = True
+
     def forward(self, x):
+        if self.debug:
+            print("shape of input x in ft_net : {}".format(x.shape))
+
         x = self.model.conv1(x)
         x = self.model.bn1(x)
         x = self.model.relu(x)
@@ -113,32 +120,63 @@ class ft_net(nn.Module):
         x = self.model.layer3(x)
         x = self.model.layer4(x)
         x = self.model.avgpool(x)
+
+        if self.debug:
+            print("shape before view x in ft_net : {}".format(x.shape))
+
         x = x.view(x.size(0), x.size(1))
+
+        if self.debug:
+            print("shape after view(classifier input) x in ft_net : {}".format(x.shape))
+
         x = self.classifier(x)
+
+        if self.debug:
+            print("shape after classifier x in ft_net : {}".format(x.shape))
+        print()
         return x
 
 # Define the DenseNet121-based Model
 class ft_net_dense(nn.Module):
 
-    def __init__(self, class_num, droprate=0.5):
+    def __init__(self, class_num, droprate=0.5, debug=False):
         super().__init__()
         model_ft = models.densenet121(pretrained=True)
         model_ft.features.avgpool = nn.AdaptiveAvgPool2d((1,1))
         model_ft.fc = nn.Sequential()
+        self.debug = debug
         self.model = model_ft
         # For DenseNet, the feature dim is 1024 
         self.classifier = ClassBlock(1024, class_num, droprate)
 
+    def debug_mode(self):
+        self.debug = True
+
     def forward(self, x):
+        if self.debug:
+            print("shape of input x in ft_net_dense : {}".format(x.shape))
+
         x = self.model.features(x)
+
+        if self.debug:
+            print("shape before view x in ft_net_dense : {}".format(x.shape))
+
         x = x.view(x.size(0), x.size(1))
+
+        if self.debug:
+            print("shape after view (classifier input) x in ft_net_dense : {}".format(x.shape))
+
         x = self.classifier(x)
+
+        if self.debug:
+            print("shape after classifier x in ft_net_dense : {}".format(x.shape))
+        print()
         return x
 
 # Define the NAS-based Model
 class ft_net_NAS(nn.Module):
 
-    def __init__(self, class_num, droprate=0.5):
+    def __init__(self, class_num, droprate=0.5, debug=False):
         super().__init__()  
         model_name = 'nasnetalarge' 
         # pip install pretrainedmodels
@@ -146,30 +184,57 @@ class ft_net_NAS(nn.Module):
         model_ft.avg_pool = nn.AdaptiveAvgPool2d((1,1))
         model_ft.dropout = nn.Sequential()
         model_ft.last_linear = nn.Sequential()
+        self.debug = debug
         self.model = model_ft
         # For DenseNet, the feature dim is 4032
         self.classifier = ClassBlock(4032, class_num, droprate)
+    
+    def debug_mode(self):
+        self.debug = True
 
     def forward(self, x):
+        if self.debug:
+            print("shape of input x in ft_net_NAS : {}".format(x.shape))
+
         x = self.model.features(x)
         x = self.model.avg_pool(x)
+
+        if self.debug:
+            print("shape befor view x in ft_net_NAS : {}".format(x.shape))
+
         x = x.view(x.size(0), x.size(1))
+
+        if self.debug:
+            print("shape after view x in ft_net_NAS : {}".format(x.shape))
+
         x = self.classifier(x)
+
+        if self.debug:
+            print("shape after classifier x in ft_net_NAS : {}".format(x.shape))
+        print()
+
         return x
     
 # Define the ResNet50-based Model (Middle-Concat)
 # In the spirit of "The Devil is in the Middle: Exploiting Mid-level Representations for Cross-Domain Instance Matching." Yu, Qian, et al. arXiv:1711.08106 (2017).
 class ft_net_middle(nn.Module):
 
-    def __init__(self, class_num, droprate=0.5):
+    def __init__(self, class_num, droprate=0.5, debug=False):
         super(ft_net_middle, self).__init__()
         model_ft = models.resnet50(pretrained=True)
         # avg pooling to global pooling
         model_ft.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        self.debug = debug
         self.model = model_ft
         self.classifier = ClassBlock(2048+1024, class_num, droprate)
 
+    def debug_mode(self):
+        self.debug = True
+
     def forward(self, x):
+        if self.debug:
+            print("shape of input x in ft_net_middle : {}".format(x.shape))
+
         x = self.model.conv1(x)
         x = self.model.bn1(x)
         x = self.model.relu(x)
@@ -182,16 +247,29 @@ class ft_net_middle(nn.Module):
         x = self.model.layer4(x)
         # x1  n*2048*1*1
         x1 = self.model.avgpool(x)
+
+        if self.debug:
+            print("shape befor cat view x in ft_net_middle : {}".format(x.shape))
+
         x = torch.cat((x0,x1),1)
         x = x.view(x.size(0), x.size(1))
+
+        if self.debug:
+            print("shape after cat view x in ft_net_middle : {}".format(x.shape))
+
         x = self.classifier(x)
+
+        if self.debug:
+            print("shape after classifier x in ft_net_middle : {}".format(x.shape))
+        print()
         return x
 
 # Part Model proposed in Yifan Sun etal. (2018)
 class PCB(nn.Module):
-    def __init__(self, class_num):
+    def __init__(self, class_num, debug=False):
         super(PCB, self).__init__()
 
+        self.debug = debug
         self.part = 6 # We cut the pool5 to 6 parts
         model_ft = models.resnet50(pretrained=True)
         self.model = model_ft
@@ -205,7 +283,13 @@ class PCB(nn.Module):
             name = 'classifier'+str(i)
             setattr(self, name, ClassBlock(2048, class_num, droprate=0.5, relu=False, bnorm=True, num_bottleneck=256))
 
+    def debug_mode(self):
+        self.debug = True
+
     def forward(self, x):
+        if self.debug:
+            print("shape of input x in PCB : {}".format(x.shape))
+
         x = self.model.conv1(x)
         x = self.model.bn1(x)
         x = self.model.relu(x)
@@ -217,6 +301,10 @@ class PCB(nn.Module):
         x = self.model.layer4(x)
         x = self.avgpool(x)
         x = self.dropout(x)
+
+        if self.debug:
+            print("shape before 6 parts x in PCB : {}".format(x.shape))
+
         part = {}
         predict = {}
         # get six part feature batchsize*2048*6
@@ -231,12 +319,17 @@ class PCB(nn.Module):
         for i in range(self.part):
             y.append(predict[i])
 
+        if self.debug:
+            print("list of 6 parts prediction in PCB : {}".format(y))
+        print()
+
         return y
 
 class PCB_test(nn.Module):
-    def __init__(self, model):
+    def __init__(self, model, debug=False):
         super(PCB_test,self).__init__()
 
+        self.debug = debug
         self.part = 6
         self.model = model.model
         self.avgpool = nn.AdaptiveAvgPool2d((self.part, 1))
@@ -244,7 +337,12 @@ class PCB_test(nn.Module):
         self.model.layer4[0].downsample[0].stride = (1,1)
         self.model.layer4[0].conv2.stride = (1,1)
 
+    def debug_mode(self):
+        self.debug = True
+
     def forward(self, x):
+        if self.debug:
+            print("shape of input x in PCB_test : {}".format(x.shape))
         x = self.model.conv1(x)
         x = self.model.bn1(x)
         x = self.model.relu(x)
@@ -255,8 +353,16 @@ class PCB_test(nn.Module):
         x = self.model.layer3(x)
         x = self.model.layer4(x)
         x = self.avgpool(x)
+
+        if self.debug:
+            print("shape before view x in PCB_test : {}".format(x.shape))
+
         y = x.view(x.size(0), x.size(1), x.size(2))
         
+        if self.debug:
+            print("shape of output (after view) x in PCB_test : {}".format(x.shape))
+        print()
+
         return y
 
 def model_structure_unittest():

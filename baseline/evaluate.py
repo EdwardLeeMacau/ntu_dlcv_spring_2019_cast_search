@@ -5,11 +5,17 @@
 """
 
 import os
+import argparse
 
 import numpy as np
 import scipy.io
 import torch
 
+
+parser = argparse.ArgumentParser(description='Evaluate_GPU')
+parser.add_argument('--name', default='ft_ResNet50', type=str, help='load model path')
+
+opt = parser.parse_args()
 
 def evaluate(qf,ql,qc,gf,gl,gc):
     query = qf
@@ -63,7 +69,7 @@ def compute_mAP(index, good_index, junk_index):
 ######################################################################
 
 if __name__ == "__main__":
-    result = scipy.io.loadmat('pytorch_result.mat')
+    result = scipy.io.loadmat('./mat/pytorch_result_{}.mat'.format(opt.name))
     query_feature = result['query_f']
     query_cam = result['query_cam'][0]
     query_label = result['query_label'][0]
@@ -71,10 +77,10 @@ if __name__ == "__main__":
     gallery_cam = result['gallery_cam'][0]
     gallery_label = result['gallery_label'][0]
 
-    multi = os.path.isfile('multi_query.mat')
+    multi = os.path.isfile('./mat/multi_query_{}.mat'.format(opt.name))
 
     if multi:
-        m_result = scipy.io.loadmat('multi_query.mat')
+        m_result = scipy.io.loadmat('./mat/multi_query_{}.mat'.format(opt.name))
         mquery_feature = m_result['mquery_f']
         mquery_cam = m_result['mquery_cam'][0]
         mquery_label = m_result['mquery_label'][0]

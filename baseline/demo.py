@@ -35,7 +35,9 @@ matplotlib.use('agg')
 # Evaluate
 parser = argparse.ArgumentParser(description='Demo')
 parser.add_argument('--query_index', default=777, type=int, help='test_image_index')
-parser.add_argument('--test_dir',default='../Market/pytorch',type=str, help='./test_data')
+parser.add_argument('--test_dir',default='./Market/pytorch',type=str, help='./test_data')
+parser.add_argument('--name', default='ft_ResNet50', type=str, help='load model path')
+
 opts = parser.parse_args()
 
 data_dir = opts.test_dir
@@ -53,7 +55,7 @@ def imshow(path, title=None):
     plt.pause(0.001)  # pause a bit so that plots are updated
 
 ######################################################################
-result = scipy.io.loadmat('pytorch_result.mat')
+result = scipy.io.loadmat('./mat/pytorch_result_{}.mat'.format(opts.name))
 query_feature = torch.FloatTensor(result['query_f'])
 query_cam = result['query_cam'][0]
 query_label = result['query_label'][0]
@@ -61,10 +63,10 @@ gallery_feature = torch.FloatTensor(result['gallery_f'])
 gallery_cam = result['gallery_cam'][0]
 gallery_label = result['gallery_label'][0]
 
-multi = os.path.isfile('multi_query.mat')
+multi = os.path.isfile('./mat/multi_query_{}.mat'.format(opts.name))
 
 if multi:
-    m_result = scipy.io.loadmat('multi_query.mat')
+    m_result = scipy.io.loadmat('./mat/multi_query_{}.mat'.format(opts.name))
     mquery_feature = torch.FloatTensor(m_result['mquery_f'])
     mquery_cam = m_result['mquery_cam'][0]
     mquery_label = m_result['mquery_label'][0]
