@@ -47,6 +47,57 @@ from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
 # except ImportError: # will be 3.x series
 #     print('This is not an error. If you want to use low precision, i.e., fp16, please install the apex with cuda support (https://github.com/NVIDIA/apex) and update pytorch to 1.0')
 
+parser = argparse.ArgumentParser(description='Testing')
+# Device Setting
+parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='gpu_ids: e.g. 0  0 1 2  0 2')
+# Model and dataset Setting
+parser.add_argument('--resume', type=str, help='Directory to the checkpoint')
+parser.add_argument('--testset', default='./IMDb/val', type=str, help='Directory of the validation set')
+parser.add_argument('--batchsize', default=128, type=int, help='batchsize')
+parser.add_argument('--features', type=str, help='Directory of the features.mat')
+# I/O Setting
+parser.add_argument('--output', default='./output', type=str, help='Directory of the output path')
+parser.add_argument('--name', default='ft_ResNet50', type=str, help='save model path')
+# Model Setting
+parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
+parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
+parser.add_argument('--PCB', action='store_true', help='use PCB' )
+# parser.add_argument('--multi', action='store_true', help='use multiple query' )
+parser.add_argument('--ms', default=[1.0], nargs='*', type=float, help="multiple_scale: e.g. '1' '1 1.1'  '1 1.1 1.2'")
+# Set k-reciprocal Encoding
+parser.add_argument('--k1', default=20, type=int)
+parser.add_argument('--k2', default=6, type=int)
+parser.add_argument('--lambda_value', default=0.3, type=float)
+
+opt = parser.parse_args()
+
+# ---------------------------------
+# Load configuration of this model
+# ---------------------------------
+if not opt.features:
+    config_path = os.path.join(os.path.dirname(opt.resume), 'opts.yaml')
+    with open(config_path, 'r') as stream:
+        config = yaml.load(stream)
+
+    opt.name = config['name']
+    opt.PCB = config['PCB']
+    opt.use_dense = config['use_dense']
+    opt.use_NAS = config['use_NAS']
+    opt.stride = config['stride']
+
+    if 'nclasses' in config: # tp compatible with old config files
+        opt.nclasses = config['nclasses']
+    else: 
+        opt.nclasses = 199 # Including "others"
+
+opt.gpu_ids = list(filter(lambda x: x >= 0, opt.gpu_ids))
+ms = [math.sqrt(float(s)) for s in opt.ms]
+
+# set gpu ids
+if len(opt.gpu_ids) > 0:
+    torch.cuda.set_device(opt.gpu_ids[0])
+    cudnn.benchmark = True
+
 # set gpu / cpu
 device = utils.selectDevice()
 use_gpu = torch.cuda.is_available()
@@ -281,56 +332,5 @@ def main():
     # os.system('python evaluate_gpu.py | tee -a {}'.format(result))
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Testing')
-    # Device Setting
-    parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='gpu_ids: e.g. 0  0 1 2  0 2')
-    # Model and dataset Setting
-    parser.add_argument('--resume', type=str, help='Directory to the checkpoint')
-    parser.add_argument('--testset', default='./IMDb/val', type=str, help='Directory of the validation set')
-    parser.add_argument('--batchsize', default=128, type=int, help='batchsize')
-    parser.add_argument('--features', type=str, help='Directory of the features.mat')
-    # I/O Setting
-    parser.add_argument('--output', default='./output', type=str, help='Directory of the output path')
-    parser.add_argument('--name', default='ft_ResNet50', type=str, help='save model path')
-    # Model Setting
-    parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
-    parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
-    parser.add_argument('--PCB', action='store_true', help='use PCB' )
-    # parser.add_argument('--multi', action='store_true', help='use multiple query' )
-    parser.add_argument('--ms', default=[1.0], nargs='*', type=float, help="multiple_scale: e.g. '1' '1 1.1'  '1 1.1 1.2'")
-    # Set k-reciprocal Encoding
-    parser.add_argument('--k1', default=20, type=int)
-    parser.add_argument('--k2', default=6, type=int)
-    parser.add_argument('--lambda_value', default=0.3, type=float)
-
-    opt = parser.parse_args()
-
-    # ---------------------------------
-    # Load configuration of this model
-    # ---------------------------------
-    if not opt.features:
-        config_path = os.path.join(os.path.dirname(opt.resume), 'opts.yaml')
-        with open(config_path, 'r') as stream:
-            config = yaml.load(stream)
-
-        opt.name = config['name']
-        opt.PCB = config['PCB']
-        opt.use_dense = config['use_dense']
-        opt.use_NAS = config['use_NAS']
-        opt.stride = config['stride']
-
-        if 'nclasses' in config: # tp compatible with old config files
-            opt.nclasses = config['nclasses']
-        else: 
-            opt.nclasses = 199 # Including "others"
-
-    opt.gpu_ids = list(filter(lambda x: x >= 0, opt.gpu_ids))
-    ms = [math.sqrt(float(s)) for s in opt.ms]
-
-    # set gpu ids
-    if len(opt.gpu_ids) > 0:
-        torch.cuda.set_device(opt.gpu_ids[0])
-        cudnn.benchmark = True
-        
     utils.details(opt)
     main()

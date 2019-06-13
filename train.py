@@ -31,7 +31,6 @@ from __future__ import division, print_function
 import argparse
 import math
 import os
-import test
 #from PIL import Image
 import time
 from functools import reduce
@@ -240,7 +239,7 @@ def val(model, loader, epoch):
     
     test_model.cuda()
 
-    features = test.extract_feature(test_model, loader)
+    features = extract_feature(test_model, loader)
     num_candidates = loader.dataset.candidates.shape[0]    
     candidate_feature = features[:num_candidates]
     cast_feature = features[num_candidates:]
@@ -267,7 +266,65 @@ def val(model, loader, epoch):
     # os.system('python evaluate_rerank.py | tee -a {}'.format(result))
 
     return
+
+def extract_feature(model, loader):
+    """
+      Use Pretrain network to extract the features.
+
+      Params:
+      - model: The CNN feature extarctor
+      - loader:
+
+      Return:
+      - features
+    """
+    features = torch.FloatTensor()
+    
+    for index, (img) in enumerate(loader, 1):
+        n = img.size()[0]
         
+        print('[{:5s}] [Iteration {:4d}/{:4d}]'.format('val', index, len(loader)))
+ 
+        if not opt.PCB:
+            ff = torch.FloatTensor(n, 512).zero_().cuda()
+        if opt.PCB:
+            ff = torch.FloatTensor(n, 2048, opt.num_part).zero_().cuda() # we have six parts
+
+        # Run the images with normal, horizontal flip
+        for i in range(2):
+            if i == 1:
+                img = utils.fliplr(img)
+            
+            input_img = img.cuda()
+            for scale in ms:
+                if scale != 1:
+                    # bicubic is only available in pytorch >= 1.1
+                    input_img = nn.functional.interpolate(input_img, scale_factor=scale, mode='bicubic', align_corners=False)
+                outputs = model(input_img) 
+                ff += outputs
+        
+        # -----------------------------------------------------------------------------------
+        # norm feature
+        # feature size (n, 2048, 6)
+        # 1. To treat every part equally, I calculate the norm for every 2048-dim part feature.
+        # 2. To keep the cosine score==1, sqrt(6) is added to norm the whole feature (2048*6).
+        # ------------------------------------------------------------------------------------    
+        if opt.PCB:
+            fnorm = torch.norm(ff, p=2, dim=1, keepdim=True) * np.sqrt(6) 
+            ff = ff.div(fnorm.expand_as(ff))
+            ff = ff.view(ff.size(0), -1)
+        else:
+            fnorm = torch.norm(ff, p=2, dim=1, keepdim=True)
+            ff = ff.div(fnorm.expand_as(ff))
+
+        # FF.shape = (n, 2048 * num_part)
+        # print("FF.shape: {}".format(ff.shape))
+
+        # Features = (images, 2048 * num_part)
+        features = torch.cat((features, ff.data.cpu()), 0)
+        # print("Features.shape: {}".format(features.shape))
+    
+    return features
 
 def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=10, debug=False):
     since = time.time()
