@@ -13,5 +13,7 @@
 /__pycache__/*
 /dataset/*
 /IMDb/*
+/IMDb_mini/*
 /model/*
 /mat/*
+/record/*

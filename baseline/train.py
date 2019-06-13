@@ -148,6 +148,17 @@ dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
 class_names = image_datasets['train'].classes
 print(class_names)
 
+
+# train / val class_names check:
+class_names_val = image_datasets['val'].classes
+count = 0
+for val_cls in class_names_val:
+    if val_cls in class_names:
+        count += 1
+print("\ntrain_class : ", len(class_names))
+print("val_class : ", len(class_names_val))
+print("same class :", count, '\n')
+
 use_gpu = torch.cuda.is_available()
 DEVICE = utils.selectDevice()
 
@@ -228,6 +239,10 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq
                 if not opt.PCB:
                     _, preds = torch.max(outputs.data, 1)
                     loss = criterion(outputs, labels)
+
+                    if debug:
+                        print("outputs :", outputs)
+                        print("labels :", labels, '\n')
                 else:
                     part = {}
                     sm = nn.Softmax(dim=1)
@@ -263,6 +278,10 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq
                 # statistics
                 running_loss += loss.item() * now_batch_size
                 running_corrects += float(torch.sum(preds == labels.data))
+
+                if debug:
+                    print("preds :", preds)
+                    print("labels.data :", labels.data, '\n')
 
             epoch_loss = running_loss / dataset_sizes[phase]
             epoch_acc = running_corrects / dataset_sizes[phase]

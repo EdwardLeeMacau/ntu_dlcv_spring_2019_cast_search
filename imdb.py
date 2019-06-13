@@ -41,7 +41,7 @@ class IMDbTrainset(Dataset):
         
         self.movie_path   = movie_path
         self.feature_path = feature_path
-        self.label_path   = label_path
+        # self.label_path   = label_path
         self.root_path    = os.path.dirname(self.movie_path)
         
         self.debug = debug
