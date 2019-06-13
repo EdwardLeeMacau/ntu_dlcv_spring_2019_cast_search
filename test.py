@@ -75,20 +75,21 @@ opt = parser.parse_args()
 # ---------------------------------
 # Load configuration of this model
 # ---------------------------------
-config_path = os.path.join(os.path.dirname(opt.resume), 'opts.yaml')
-with open(config_path, 'r') as stream:
-    config = yaml.load(stream)
+if not opt.features:
+    config_path = os.path.join(os.path.dirname(opt.resume), 'opts.yaml')
+    with open(config_path, 'r') as stream:
+        config = yaml.load(stream)
 
-opt.name = config['name']
-opt.PCB = config['PCB']
-opt.use_dense = config['use_dense']
-opt.use_NAS = config['use_NAS']
-opt.stride = config['stride']
+    opt.name = config['name']
+    opt.PCB = config['PCB']
+    opt.use_dense = config['use_dense']
+    opt.use_NAS = config['use_NAS']
+    opt.stride = config['stride']
 
-if 'nclasses' in config: # tp compatible with old config files
-    opt.nclasses = config['nclasses']
-else: 
-    opt.nclasses = 199 # Including "others"
+    if 'nclasses' in config: # tp compatible with old config files
+        opt.nclasses = config['nclasses']
+    else: 
+        opt.nclasses = 199 # Including "others"
 
 opt.gpu_ids = list(filter(lambda x: x >= 0, opt.gpu_ids))
 ms = [math.sqrt(float(s)) for s in opt.ms]
@@ -289,16 +290,26 @@ def main():
             candidate_feature = features[:num_candidates]
             cast_feature = features[num_candidates:]
 
+        candidate_feature = candidate_feature.numpy()
+        candidate_paths   = candidate_paths.to_numpy()
+        candidate_films   = candidate_films.to_numpy()
+        cast_feature      = cast_feature.numpy()
+        cast_paths        = cast_paths.to_numpy()
+        cast_films        = cast_films.to_numpy()
+
         # Save to Matlab for check
         result = {
-            'candidate_features': candidate_feature.numpy(), 
-            'candidate_paths': candidate_paths.to_numpy(),
-            'candidate_films': candidate_films.to_numpy(),
-            'cast_features': cast_feature.numpy(), 
-            'cast_paths': cast_paths.to_numpy(),
-            'cast_films': cast_films.to_numpy(), 
+            'candidate_features': candidate_feature, 
+            'candidate_paths': candidate_paths,
+            'candidate_films': candidate_films,
+            'cast_features': cast_feature, 
+            'cast_paths': cast_paths,
+            'cast_films': cast_films, 
         }
-        scipy.io.savemat(os.path.join(opt.output, os.path.basename(opt.resume) + '_result.mat'), result)
+
+        print("Features saved to {}".format(os.path.join(opt.output, os.path.basename(opt.resume).split('.')[0] + '_result.mat')))
+        scipy.io.savemat('result.mat', result)
+        scipy.io.savemat(os.path.join(opt.output, os.path.basename(opt.resume).split('.')[0] + '_result.mat'), result)
 
     if opt.features:
         result = scipy.io.loadmat(opt.features)
@@ -310,7 +321,10 @@ def main():
         candidate_path = result['candidate_paths']
         candidate_film = result['candidate_films']
 
-    re_rank = evaluate_rerank.run(cast_feature.numpy(), candidate_feature.numpy(), opt.k1, opt.k2, opt.lambda_value)
+    print(cast_feature.shape)
+    print(cast_film)
+    raise NotImplementedError
+    re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
     print(re_rank)
 
     # subprocess.call(['evaluate_gpu.py', *args])

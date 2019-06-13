@@ -51,8 +51,10 @@ class IMDbTrainset(Dataset):
         self.transform = transform
 
         self.movies         = os.listdir(self.movie_path)
-        self.candidate_json = [pd.read_json(os.path.join(self.movie_path, filename, 'candidate.json'), orient='index', typ='series') for filename in os.listdir(self.movie_path)]
-        self.cast_json      = [pd.read_json(os.path.join(self.movie_path, filename, 'cast.json'), orient='index', typ='series') for filename in os.listdir(self.movie_path)]
+        self.candidate_json = [pd.read_json(os.path.join(self.movie_path, filename, 'candidate.json'), orient='index', typ='series') 
+                                  for filename in sorted(os.listdir(self.movie_path))]
+        self.cast_json      = [pd.read_json(os.path.join(self.movie_path, filename, 'cast.json'), orient='index', typ='series') 
+                                  for filename in sorted(os.listdir(self.movie_path))]
 
         # Read as pandas.DataFrame and make it
         self.candidates = pd.concat(self.candidate_json, axis=0, keys=self.movies).reset_index()
