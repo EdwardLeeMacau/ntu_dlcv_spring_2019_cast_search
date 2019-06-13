@@ -39,6 +39,7 @@ from torchvision import datasets, models, transforms
 
 import imdb
 import utils
+import evaluate_rerank
 from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
 
 # try:
@@ -47,7 +48,7 @@ from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
 #     print('This is not an error. If you want to use low precision, i.e., fp16, please install the apex with cuda support (https://github.com/NVIDIA/apex) and update pytorch to 1.0')
 
 
-parser = argparse.ArgumentParser(description='Training')
+parser = argparse.ArgumentParser(description='Testing')
 parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='gpu_ids: e.g. 0  0 1 2  0 2')
 parser.add_argument('--resume', type=str, help='Directory to the checkpoint')
 # parser.add_argument('--which_epoch', default='last', type=str, help='0, 1, 2, 3...or last')
@@ -59,20 +60,21 @@ parser.add_argument('--batchsize', default=256, type=int, help='batchsize')
 parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
 parser.add_argument('--PCB', action='store_true', help='use PCB' )
 parser.add_argument('--multi', action='store_true', help='use multiple query' )
-parser.add_argument('--fp16', action='store_true', help='use fp16.' )
 parser.add_argument('--ms', default=[1.0], nargs='*', type=float, help="multiple_scale: e.g. '1' '1 1.1'  '1 1.1 1.2'")
+# Set k-reciprocal Encoding
+parser.add_argument('--k1', default=20, type=int)
+parser.add_argument('--k2', default=6, type=int)
+parser.add_argument('--lambda_value', default=0.3, type=float)
 
 opt = parser.parse_args()
 
-# ------------------
-# Load configuration
-# -------------------
+# ---------------------------------
+# Load configuration of this model
+# ---------------------------------
 config_path = os.path.join('./model', opt.name, 'opts.yaml')
 with open(config_path, 'r') as stream:
     config = yaml.load(stream)
-    print(config)
 
-opt.fp16 = config['fp16'] 
 opt.PCB = config['PCB']
 opt.use_dense = config['use_dense']
 opt.use_NAS = config['use_NAS']
@@ -104,20 +106,21 @@ use_gpu = torch.cuda.is_available()
 #   Lambda():
 # ------------------------------------
 
-data_transforms = transforms.Compose([
-        transforms.Resize((256,128), interpolation=3),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        #transforms.TenCrop(224),
-        #transforms.Lambda(lambda crops: torch.stack(
-        #   [transforms.ToTensor()(crop) 
-        #      for crop in crops]
-        # )),
-        #transforms.Lambda(lambda crops: torch.stack(
-        #   [transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(crop)
-        #       for crop in crops]
-        # ))
-])
+if not opt.PCB:
+    data_transforms = transforms.Compose([
+            transforms.Resize((256,128), interpolation=3),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            #transforms.TenCrop(224),
+            #transforms.Lambda(lambda crops: torch.stack(
+            #   [transforms.ToTensor()(crop) 
+            #      for crop in crops]
+            # )),
+            #transforms.Lambda(lambda crops: torch.stack(
+            #   [transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(crop)
+            #       for crop in crops]
+            # ))
+    ])
 
 if opt.PCB:
     data_transforms = transforms.Compose([
@@ -126,12 +129,19 @@ if opt.PCB:
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]) 
     ])
 
-image_datasets = {x: imdb.IMDbTrainset(os.path.join(opt.testset), data_trasnforms) for x in ['candidate', 'cast']}
-dataloaders = {x: torch.utils.data.DataLoader(
-    image_datasets[x], 
+image_datasets = imdb.IMDbTrainset(
+    movie_path=os.path.join(opt.testset), 
+    feature_path=None, 
+    label_path=opt.testset+"_GT.json",
+    mode='features',
+    transform=data_transforms
+)
+dataloaders = torch.utils.data.DataLoader(
+    image_datasets, 
     batch_size=opt.batchsize,
-    shuffle=False, num_workers=16) for x in ['candidate','cast']
-}
+    shuffle=False,
+    num_workers=8
+)
 
 # class_names = image_datasets['query'].classes
 
@@ -156,9 +166,11 @@ def extract_feature(model, loader):
     
     for index, (img, _) in enumerate(loader, 1):
         n = img.size()[0]
-        print("[{}/{}]".format(index, len(loader)))
         
-        ff = torch.FloatTensor(n, 512).zero_().cuda()
+        print('[{:5s}] [Iteration {:4d}/{:4d}]'.format('val', index, len(loader)))
+        
+        if not opt.PCB:
+            ff = torch.FloatTensor(n, 512).zero_().cuda()
         if opt.PCB:
             ff = torch.FloatTensor(n, 2048, opt.num_part).zero_().cuda() # we have six parts
 
@@ -196,6 +208,7 @@ def extract_feature(model, loader):
     
     return features
 
+# (Deprecated 20190614)
 def get_id(img_path):
     """
       Get the image information: (camera_id, labels)
@@ -223,16 +236,16 @@ def get_id(img_path):
     return camera_id, labels
 
 def main():
-    candidate_path = image_datasets['candidate'].imgs
-    cast_path = image_datasets['cast'].imgs
-
-    gallery_cam, gallery_label = get_id(candidate_path)
-    query_cam, query_label = get_id(cast_path)
+    # ---------------------------------------------------------------------
+    # We need to transfrm all candidates images and cast images to features
+    # And query the cast inside the same films
+    # ---------------------------------------------------------------------
+    candidate_paths, candidate_films = image_datasets.candidates['level_1'], image_datasets.candidates['level_0']
+    cast_paths, cast_films = image_datasets.casts['level_1'], image_datasets.casts['level_0']
 
     # -----------------------------------
-    # Load Collected data Trained model
+    # Load datas and trained model
     # -----------------------------------
-
     if opt.PCB:
         model_structure = PCB(opt.nclasses)
 
@@ -253,30 +266,39 @@ def main():
 
     # Change to test mode
     model = model.eval()
+
+    # Throught it to the gpu
     if use_gpu:
         model = model.cuda()
 
     # Extract feature
     with torch.no_grad():
-        candidate_feature = extract_feature(model, dataloaders['candidate'])
-        cast_feature = extract_feature(model, dataloaders['cast'])
+        features = extract_feature(model, dataloaders)
+
+        # candidates first
+        num_candidates = dataloaders.dataset.candidates.shape[0]
         
+        candidate_feature = features[:num_candidates]
+        cast_feature = features[num_candidates:]
+
     # Save to Matlab for check
     result = {
-        'candidate_f': candidate_feature.numpy(), 
-        # 'gallery_label': gallery_label, 
-        # 'gallery_cam': gallery_cam, 
-        'cast_f': cast_feature.numpy(), 
-        # 'query_label': query_label, 
-        # 'query_cam': query_cam
+        'candidate_features': candidate_feature.numpy(), 
+        'candidate_paths': candidate_paths.to_numpy(),
+        'candidate_films': candidate_films.to_numpy(),
+        'cast_features': cast_feature.numpy(), 
+        'cast_paths': cast_paths.to_numpy(),
+        'cast_films': cast_films.to_numpy(), 
     }
-    scipy.io.savemat(os.path.join(opt.output, 'pytorch_result.mat'), result)
+    scipy.io.savemat(os.path.join(opt.output, os.path.basename(opt.resume) + '_result.mat'), result)
 
-    print(opt.name)
-    result = './model/{}/result.txt'.format(opt.name)
+    re_rank = evaluate_rerank.run(cast_feature.numpy(), candidate_feature.numpy(), opt.k1, opt.k2, opt.lambda_value)
+    print(re_rank)
 
     # subprocess.call(['evaluate_gpu.py', *args])
-    os.system('python evaluate_gpu.py | tee -a {}'.format(result))
+
+    # result = './model/{}/result.txt'.format(opt.name)
+    # os.system('python evaluate_gpu.py | tee -a {}'.format(result))
 
 if __name__ == "__main__":
     utils.details(opt)

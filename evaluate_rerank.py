@@ -19,15 +19,12 @@ from re_ranking import re_ranking
 # This evaluate function is different with other evaluate functions
 def evaluate(score, ql, qc, gl, gc):
     """
-      (...)
-    
       Params:
-      - query_feature = result['query_f']
-      - query_cam = result['query_cam'][0]
-      - query_label = result['query_label'][0]
-      - gallery_feature = result['gallery_f']
-      - gallery_cam = result['gallery_cam'][0]
-      - gallery_label = result['gallery_label'][0]
+      - score
+      - ql: query_label = result['query_label'][0]
+      - qc: query_cam = result['query_cam'][0]
+      - gl: gallery_cam = result['gallery_cam'][0]
+      - gc: gallery_label = result['gallery_label'][0]
     
       Return:
       - CMC_tmp
@@ -47,7 +44,7 @@ def evaluate(score, ql, qc, gl, gc):
     CMC_tmp = compute_mAP(index, good_index, junk_index)
     return CMC_tmp
 
-
+# Deprecated (20190614)
 def compute_mAP(index, good_index, junk_index):
     ap = 0
     cmc = torch.IntTensor(len(index)).zero_()
@@ -86,25 +83,44 @@ def output(path):
     """
     raise NotImplementedError
 
-def main():
-    result_path = os.path.join('output', name, 'pytorch_result.mat')
-
-    result = scipy.io.loadmat(result_path)
-    cast_feature = result['cast_f']
-    # query_cam = result['query_cam'][0]
-    # query_label = result['query_label'][0]
-    candidate_feature = result['candidate_f']
-    # gallery_cam = result['gallery_cam'][0]
-    # gallery_label = result['gallery_label'][0]
-
-    #re-ranking
+def run(query_features, gallery_features, k1=20, k2=6, lambda_value=0.3):
+    # ------------------------
+    # Mapping:
+    #   cast -> query
+    #   candidate -> gallery
+    # ------------------------
+    # re-ranking
     print('calculate initial distance')
-    q_g_dist = np.dot(cast_feature, np.transpose(candidate_feature))
-    q_q_dist = np.dot(cast_feature, np.transpose(cast_feature))
-    g_g_dist = np.dot(candidate_feature, np.transpose(candidate_feature))
+    q_g_dist = np.dot(query_features, np.transpose(gallery_features))
+    q_q_dist = np.dot(query_features, np.transpose(query_features))
+    g_g_dist = np.dot(gallery_features, np.transpose(gallery_features))
     
     print('reranking')
-    re_rank = re_ranking(q_g_dist, q_q_dist, g_g_dist)
+    re_rank = re_ranking(q_g_dist, q_q_dist, g_g_dist, k1=k1, k2=k2, lambda_value=lambda_value)
+
+    return re_rank
+
+def main():
+    result_path = os.path.join('./output', 'PCB', 'pytorch_result.mat')
+
+    result = scipy.io.loadmat(result_path)
+
+    query_feature = result['query_f']
+    query_cam = result['query_cam'][0]
+    query_label = result['query_label'][0]
+    gallery_feature = result['gallery_f']
+    gallery_cam = result['gallery_cam'][0]
+    gallery_label = result['gallery_label'][0]
+
+    # re-ranking
+    print('calculate initial distance')
+    q_g_dist = np.dot(query_feature, np.transpose(gallery_feature))
+    q_q_dist = np.dot(query_feature, np.transpose(query_feature))
+    g_g_dist = np.dot(gallery_feature, np.transpose(gallery_feature))
+    
+    print('reranking')
+    lambda_value, k1, k2 = 0.3, 20, 6
+    re_rank = re_ranking(q_g_dist, q_q_dist, g_g_dist, k1=k1, k2=k2, lambda_value=lambda_value)
     
     CMC = torch.IntTensor(len(gallery_label)).zero_()
     ap = 0.0

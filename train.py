@@ -31,6 +31,7 @@ from __future__ import division, print_function
 import argparse
 import math
 import os
+import test
 #from PIL import Image
 import time
 from functools import reduce
@@ -38,55 +39,64 @@ from shutil import copyfile
 
 import matplotlib
 import matplotlib.pyplot as plt
+import scipy
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.optim as optim
+import yaml
 from torch.nn import functional as F
 from torch.optim import lr_scheduler
 from torchvision import datasets, transforms
-import utils
-import yaml
 
-from model import PCB, ft_net, ft_net_dense, ft_net_NAS
-from random_erasing import RandomErasing
+import utils
 from imdb import IMDbTrainset
+from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
+from random_erasing import RandomErasing
 
 matplotlib.use('agg')
 
 # -----------------------------------------
 # fp16: Use Float16 to train the network.
 # -----------------------------------------
-try:
-    from apex.fp16_utils import *
-    from apex import amp, optimizers
-except ImportError: # will be 3.x series
-    print('This is not an error. If you want to use low precision, i.e., fp16, please install the apex with cuda support (https://github.com/NVIDIA/apex) and update pytorch to 1.0')
+# try:
+#     from apex.fp16_utils import *
+#     from apex import amp, optimizers
+# except ImportError: # will be 3.x series
+#     print('This is not an error. If you want to use low precision, i.e., fp16, please install the apex with cuda support (https://github.com/NVIDIA/apex) and update pytorch to 1.0')
 
 ######################################################################
 parser = argparse.ArgumentParser(description='Training')
-parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='')
-parser.add_argument('--name', default='ft_net_dense', type=str, help='output model name')
-parser.add_argument('--trainset', default='./IMDb/train', type=str, help='Directory of training set.')
-parser.add_argument('--valset', default='./IMDb/val', type=str, help='Directory of validation set')
-parser.add_argument('--testset', default='./IMDb/test', type=str, help='Directory of testing set')
+# Model Setting
 parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
-parser.add_argument('--color_jitter', action='store_true', help='use color jitter in training' )
-parser.add_argument('--batchsize', default=32, type=int, help='batchsize')
 parser.add_argument('--stride', default=2, type=int, help='stride')
-parser.add_argument('--erasing_p', default=0, type=float, help='Random Erasing probability, in [0,1]')
 parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
 parser.add_argument('--use_NAS', action='store_true', help='use NAS' )
-parser.add_argument('--warm_epoch', default=0, type=int, help='the first K epoch that needs warm up')
-parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
-parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
 parser.add_argument('--PCB', action='store_true', help='use PCB+ResNet50' )
 parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
+parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
+# Training setting
+parser.add_argument('--batchsize', default=32, type=int, help='batchsize in training')
+parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
+parser.add_argument('--milestones', default=[5, 10, 15, 20], nargs='*', type=int)
+parser.add_argument('--gamma', default=0.1, type=float)
+parser.add_argument('--epochs', default=20, type=int)
+parser.add_argument('--color_jitter', action='store_true', help='use color jitter in training' )
+parser.add_argument('--erasing_p', default=0, type=float, help='Random Erasing probability, in [0,1]')
+parser.add_argument('--warm_epoch', default=0, type=int, help='the first K epoch that needs warm up')
+# I/O Setting 
+parser.add_argument('--name', default='PCB', type=str, help='output model name')
+parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
+parser.add_argument('--trainset', default='./IMDb/train', type=str, help='Directory of training set.')
+parser.add_argument('--valset', default='./IMDb/val', type=str, help='Directory of validation set')
+# Device Setting
+parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='')
+# Others Setting
 parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
-opt = parser.parse_args()
+parser.add_argument('--log_interval', default=10, type=int)
+parser.add_argument('--save_interval', default=1, type=int)
 
-fp16 = opt.fp16
-name = opt.name
+opt = parser.parse_args()
 
 # set gpu ids
 if len(opt.gpu_ids) > 0:
@@ -139,33 +149,42 @@ data_transforms = {
 
 image_datasets = {}
 image_datasets['train'] = IMDbTrainset(
-    movie_path=opt.trainset, feature_path=None, label_path=opt.trainset+"_GT.json", 
-    debug=opt.debug, transform=data_transforms['train'])
+    movie_path=opt.trainset, 
+    feature_path=None, 
+    label_path=opt.trainset+"_GT.json", 
+    debug=opt.debug, 
+    transform=data_transforms['train']
+)
 image_datasets['val'] = IMDbTrainset(
-    movie_path=opt.valset, feature_path=None, label_path=opt.valset+"_GT.json", 
-    debug=opt.debug, transform=data_transforms['val'])
+    movie_path=opt.valset, 
+    feature_path=None, 
+    label_path=opt.valset+"_GT.json", 
+    debug=opt.debug, 
+    transform=data_transforms['val']
+)
 
-
+dataloaders = {}
 # pin_memory = True for good GPU (ref : https://blog.csdn.net/tsq292978891/article/details/80454568 )
-dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=opt.batchsize, drop_last=True,
-                                             shuffle=True, num_workers=8, pin_memory=True) # 8 workers may work faster
-              for x in ['train', 'val']}
-dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
+dataloaders['train'] = torch.utils.data.DataLoader(
+    image_datasets['train'], 
+    batch_size=opt.batchsize, 
+    drop_last=True,
+    shuffle=True, 
+    num_workers=8, 
+    pin_memory=True
+)
+dataloaders['val'] = torch.utils.data.DataLoader(
+    image_datasets['val'], 
+    batch_size=opt.batchsize, 
+    drop_last=True,
+    shuffle=True, 
+    num_workers=8, 
+    pin_memory=True
+)
 
 class_names = image_datasets['train'].classes
+opt.len_class = len(class_names) # For saving in yaml
 print(class_names)
-
-# train / val class_names check:
-class_names_val = image_datasets['val'].classes
-count = 0
-for val_cls in class_names_val:
-    if val_cls in class_names:
-        count += 1
-print("\ntrain_class : ", len(class_names))
-print("val_class : ", len(class_names_val))
-print("same class :", count, '\n')
-
-
 
 use_gpu = torch.cuda.is_available()
 # DEVICE = utils.selectDevice()
@@ -201,11 +220,49 @@ y_err = {}
 y_err['train'] = []
 y_err['val'] = []
 
+def val(model, loader):    
+    model.cpu()
+
+    if opt.PCB:
+        test_model = PCB_test(model)
+    else:
+        raise NotImplementedError
+        test_model = model
+        test_model.classifier.classifier = nn.Sequential()
+    
+    test_model.cuda()
+
+    features = test.extract_feature(test_model, loader)
+    num_candidates = loader.dataset.candidates.shape[0]    
+    candidate_feature = features[:num_candidates]
+    cast_feature = features[num_candidates:]
+
+    print("Extracted_features.shape: {}".format(features.shape))
+
+    candidate_paths, candidate_films = loader.dataset.candidates['level_1'], loader.dataset.candidates['level_0']
+    cast_paths, cast_films = loader.dataset.casts['level_1'], loader.dataset.casts['level_0']
+
+    result = {
+        'candidate_features': candidate_feature.numpy(), 
+        'candidate_paths': candidate_paths.to_numpy(),
+        'candidate_films': candidate_films.to_numpy(),
+        'cast_features': cast_feature.numpy(), 
+        'cast_paths': cast_paths.to_numpy(),
+        'cast_films': cast_films.to_numpy(), 
+    }
+    scipy.io.savemat(os.path.join(opt.output, 'pytorch_result.mat'), result)
+
+    os.system('python evaluate_rerank.py | tee -a {}'.format(result))
+
+    return
+        
+
 def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=10, debug=False):
     since = time.time()
 
-    # best_model_wts = model.state_dict()
-    # best_acc = 0.0
+    best_model_wts = model.state_dict()
+    best_acc = 0.0
+    best_mAP = 0.0
 
     # Warm starting training technique.
     warm_up = 0.1 # We start from the 0.1*lrRate
@@ -213,117 +270,94 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq
 
     if debug:
         model.debug_mode()
+        
     for epoch in range(1, num_epochs + 1):
         scheduler.step()
+        model.train()
         
-        # Each epoch has a training and validation phase
-        for phase in ['train', 'val']:
-            if phase == 'train':    
-                model.train()
-            else:
-                model.eval()
+        running_loss = 0.0
+        running_corrects = 0.0
+    
+        # Iterate over data.
+        for index, (inputs, labels) in enumerate(dataloaders['train'], 1):
+            n, c, h, w = inputs.shape
+            optimizer.zero_grad()                
 
-            running_loss = 0.0
-            running_corrects = 0.0
+            # inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
+            if use_gpu:
+                inputs = inputs.cuda()
+                labels = labels.cuda()
+            # print(inputs.shape)
+            # print(labels.shape)
+
+            outputs = model(inputs)
+
+            if not opt.PCB:
+                _, preds = torch.max(outputs.data, 1)
+                loss = criterion(outputs, labels)
             
-            # Iterate over data.
-            for index, (inputs, labels) in enumerate(dataloaders[phase], 1):
-                now_batch_size, c, h, w = inputs.shape
-                optimizer.zero_grad()                
+            if opt.PCB:
+                part = {}
+                sm = nn.Softmax(dim=1)
+                for i in range(opt.num_part):
+                    part[i] = outputs[i]
 
-                # inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
-                if use_gpu:
-                    inputs = inputs.cuda()
-                    labels = labels.cuda()
-                # print(inputs.shape)
-                # print(labels.shape)
-
-                if phase == 'val':
-                    with torch.no_grad():
-                        outputs = model(inputs)
-                else:
-                    outputs = model(inputs)
-
-                if not opt.PCB:
-                    _, preds = torch.max(outputs.data, 1)
-                    loss = criterion(outputs, labels)
-
-                    if debug:
-                        print("outputs.shape :", outputs.shape)
-                        print("labels.shape :", labels.shape)
-                        print("outputs :", outputs)
-                        print("labels :", labels, '\n')
-                else:
-                    part = {}
-                    sm = nn.Softmax(dim=1)
-                    for i in range(opt.num_part):
-                        part[i] = outputs[i]
-
-                    # score = reduce((lambda x, y: x + y), [F.softmax(tensor, dim=1) for tensor in part.values()])
-                    score = sm(part[0]) + sm(part[1]) +sm(part[2]) + sm(part[3]) + sm(part[4]) + sm(part[5])
-                    _, preds = torch.max(score.data, 1)
-
-                    if debug:
-                        print("part[0] : ", part[0])
-                        print("labels : ", labels , '\n')
-
-                    loss = criterion(part[0], labels)
-                    for i in range(opt.num_part - 1):
-                        loss += criterion(part[i+1], labels)
-
-                # backward + optimize only if in training phase
-                if epoch < opt.warm_epoch and phase == 'train': 
-                    warm_up = min(1.0, warm_up + 0.9 / warm_iteration)
-                    loss *= warm_up
-
-                if phase == 'train':
-                    if fp16: # we use optimier to backward loss
-                        with amp.scale_loss(loss, optimizer) as scaled_loss:
-                            scaled_loss.backward()
-                    else:
-                        loss.backward()
-                    
-                    optimizer.step()
-
-                # statistics
-                running_loss += loss.item() * now_batch_size
-                running_corrects += float(torch.sum(preds == labels.data))
+                # score = reduce((lambda x, y: x + y), [F.softmax(tensor, dim=1) for tensor in part.values()])
+                score = sm(part[0]) + sm(part[1]) +sm(part[2]) + sm(part[3]) + sm(part[4]) + sm(part[5])
+                _, preds = torch.max(score.data, 1)
 
                 if debug:
-                    print("preds :", preds)
-                    print("labels.data :", labels.data, '\n')
+                    print("part[0] : ", part[0])
+                    print("labels : ", labels , '\n')
 
-            epoch_loss = running_loss / dataset_sizes[phase]
-            epoch_acc = running_corrects / dataset_sizes[phase]
+                loss = criterion(part[0], labels)
+                for i in range(opt.num_part - 1):
+                    loss += criterion(part[i+1], labels)
+
+            # backward + optimize only if in training phase
+            if epoch < opt.warm_epoch: 
+                warm_up = min(1.0, warm_up + 0.9 / warm_iteration)
+                loss *= warm_up
+
+            loss.backward()
+            optimizer.step()
+
+            # statistics
+            running_loss += loss.item() * n
+            running_corrects += float(torch.sum(preds == labels.data))
+
+            epoch_loss = running_loss / len(image_datasets['train'])
+            epoch_acc = running_corrects / len(image_datasets['train'])
             
-            print('[{}] [Epoch {}/{}] [Loss: {:.4f}] [Acc: {:.2%}]'.format(phase, epoch, num_epochs, epoch_loss, epoch_acc))
+            if index % opt.log_interval == 0:
+                print('[{:5s}] [Epoch {:2d}/{:2d}] [Iteration {:4d}/{:4d}] [Loss: {:.4f}] [Acc: {:.2%}]'.format('train', epoch, num_epochs, index, len(dataloaders['train']), epoch_loss, epoch_acc))
             
-            y_loss[phase].append(epoch_loss)
-            y_err[phase].append(1.0 - epoch_acc)            
+            y_loss['train'].append(epoch_loss)
+            y_err['train'].append(1.0 - epoch_acc)            
 
-            # deep copy the model
-            if phase == 'val':
-                last_model_wts = model.state_dict()
+        # deep copy the model
+        if epoch % save_freq == 0:
+            save_network(model, epoch)
 
-                if epoch % save_freq == 0:
-                    save_network(model, epoch)
+        # best_model_wts = model.state_dict()
+        # best_mAP = mAP
 
-                draw_curve(epoch)
+        draw_curve(epoch)
 
         time_elapsed = time.time() - since
         print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
         
+        val(model)
+
     # ------------------------
     # All training epochs ends
     # ------------------------
     time_elapsed = time.time() - since
-    print('Training complete in {:.0f}m {:.0f}s'.format(
-        time_elapsed // 60, time_elapsed % 60))
-    #print('Best val Acc: {:4f}'.format(best_acc))
-
+    print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+    
     # load best model weights
-    model.load_state_dict(last_model_wts)
-    save_network(model, 'last')
+    model.load_state_dict(best_model_wts)
+    save_network(model, 'best')
     
     return model
 
@@ -332,9 +366,9 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq
 # Draw Curve
 #---------------------------
 x_epoch = []
-fig = plt.figure()
+fig = plt.figure(figsize=(12.8, 7.2))
 ax0 = fig.add_subplot(121, title="loss")
-ax1 = fig.add_subplot(122, title="top1err")
+ax1 = fig.add_subplot(122, title="error")
 
 def draw_curve(current_epoch, save_jpg='train.jpg'):
     x_epoch.append(current_epoch)
@@ -347,18 +381,20 @@ def draw_curve(current_epoch, save_jpg='train.jpg'):
         ax0.legend()
         ax1.legend()
 
-    fig.savefig(os.path.join('./model', name, save_jpg))
+    fig.savefig(os.path.join('./model', opt.name, save_jpg))
 
 ######################################################################
 # Save model
 #---------------------------
 def save_network(network, epoch):
     num_fill = 3
-    save_path = os.path.join('./model', name, 'net_{}.pth'.format(str(epoch).zfill(num_fill)))
+    save_path = os.path.join('./model', opt.name, 'net_{}.pth'.format(str(epoch).zfill(num_fill)))
     torch.save(network.cpu().state_dict(), save_path)
 
     if torch.cuda.is_available():
         network.cuda(opt.gpu_ids[0])
+
+    return
 
 ######################################################################
 # Finetuning the convnet
@@ -424,8 +460,8 @@ else:
 #
 
 if __name__ == "__main__":
-    dir_name = os.path.join('./model', name)
-    os.makedirs(dir_name,mode=0o777, exist_ok=True)
+    dir_name = os.path.join('./model', opt.name)
+    os.makedirs(dir_name, mode=0o777, exist_ok=True)
     # if not os.path.isdir(dir_name):
     #     os.mkdir(dir_name)
 
@@ -437,16 +473,20 @@ if __name__ == "__main__":
     with open('./{}/opts.yaml'.format(dir_name),'w') as fp:
         yaml.dump(vars(opt), fp, default_flow_style=False)
 
-    # model to gpu
+    # print opts
+    utils.details(opt)
+
     # model = model.to(DEVICE)
     model = model.cuda()
-    if fp16:
-        # model = network_to_half(model)
-        # optimizer_ft = FP16_Optimizer(optimizer_ft, static_loss_scale = 128.0)
-        model, optimizer_ft = amp.initialize(model, optimizer_ft, opt_level = "O1")
+    # if fp16:
+    #     model = network_to_half(model)
+    #     optimizer_ft = FP16_Optimizer(optimizer_ft, static_loss_scale = 128.0)
+    #     model, optimizer_ft = amp.initialize(model, optimizer_ft, opt_level = "O1")
 
     criterion = nn.CrossEntropyLoss()
     # Decay LR by a factor of 0.1 every 40 epochs
-    exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=40, gamma=0.1)
-
-    model = train_model(model, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=60, save_freq=2, debug=opt.debug)
+    # exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=40, gamma=0.1)
+    lr_scheduler.MultiStepLR(optimizer_ft, milestones=opt.milestones, gamma=opt.gamma)
+    
+    model = train_model(model, criterion, optimizer_ft, lr_scheduler, 
+                num_epochs=opt.epochs, save_freq=opt.save_interval, debug=opt.debug)
