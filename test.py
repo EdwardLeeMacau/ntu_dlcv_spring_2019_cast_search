@@ -49,17 +49,21 @@ from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
 
 
 parser = argparse.ArgumentParser(description='Testing')
+# Device Setting
 parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='gpu_ids: e.g. 0  0 1 2  0 2')
+# Model and dataset Setting
 parser.add_argument('--resume', type=str, help='Directory to the checkpoint')
-# parser.add_argument('--which_epoch', default='last', type=str, help='0, 1, 2, 3...or last')
 parser.add_argument('--testset', default='./IMDb/val', type=str, help='Directory of the validation set')
+parser.add_argument('--batchsize', default=128, type=int, help='batchsize')
+parser.add_argument('--features', type=str, help='Directory of the features.mat')
+# I/O Setting
 parser.add_argument('--output', default='./output', type=str, help='Directory of the output path')
-parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
 parser.add_argument('--name', default='ft_ResNet50', type=str, help='save model path')
-parser.add_argument('--batchsize', default=256, type=int, help='batchsize')
+# Model Setting
+parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
 parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
 parser.add_argument('--PCB', action='store_true', help='use PCB' )
-parser.add_argument('--multi', action='store_true', help='use multiple query' )
+# parser.add_argument('--multi', action='store_true', help='use multiple query' )
 parser.add_argument('--ms', default=[1.0], nargs='*', type=float, help="multiple_scale: e.g. '1' '1 1.1'  '1 1.1 1.2'")
 # Set k-reciprocal Encoding
 parser.add_argument('--k1', default=20, type=int)
@@ -71,8 +75,7 @@ opt = parser.parse_args()
 # ---------------------------------
 # Load configuration of this model
 # ---------------------------------
-config_folder = os.path.dirname(opt.resume)
-config_path = os.path.join(config_folder, 'opts.yaml')
+config_path = os.path.join(os.path.dirname(opt.resume), 'opts.yaml')
 with open(config_path, 'r') as stream:
     config = yaml.load(stream)
 
@@ -240,61 +243,72 @@ def get_id(img_path):
     return camera_id, labels
 
 def main():
-    # ---------------------------------------------------------------------
-    # We need to transfrm all candidates images and cast images to features
-    # And query the cast inside the same films
-    # ---------------------------------------------------------------------
-    candidate_paths, candidate_films = image_datasets.candidates['level_1'], image_datasets.candidates['level_0']
-    cast_paths, cast_films = image_datasets.casts['level_1'], image_datasets.casts['level_0']
+    if not opt.features:
+        # ---------------------------------------------------------------------
+        # We need to transfrm all candidates images and cast images to features
+        # And query the cast inside the same films
+        # ---------------------------------------------------------------------
+        candidate_paths, candidate_films = image_datasets.candidates['level_1'], image_datasets.candidates['level_0']
+        cast_paths, cast_films = image_datasets.casts['level_1'], image_datasets.casts['level_0']
 
-    # -----------------------------------
-    # Load datas and trained model
-    # -----------------------------------
-    if opt.use_dense:
-        model_structure = ft_net_dense(opt.nclasses)
-    elif opt.use_NAS:
-        model_structure = ft_net_NAS(opt.nclasses)
-    else:
-        model_structure = ft_net(opt.nclasses, stride = opt.stride)
+        # -----------------------------------
+        # Load datas and trained model
+        # -----------------------------------
+        if opt.use_dense:
+            model_structure = ft_net_dense(opt.nclasses)
+        elif opt.use_NAS:
+            model_structure = ft_net_NAS(opt.nclasses)
+        else:
+            model_structure = ft_net(opt.nclasses, stride = opt.stride)
 
-    if opt.PCB:
-        model_structure = PCB(opt.nclasses)
+        if opt.PCB:
+            model_structure = PCB(opt.nclasses)
 
-    model = utils.load_network(model_structure, opt.resume)
+        model = utils.load_network(model_structure, opt.resume)
 
-    # Remove the final fc layer and classifier layer
-    if opt.PCB:
-        model = PCB_test(model)
-    else:
-        model.classifier.classifier = nn.Sequential()
+        # Remove the final fc layer and classifier layer
+        if opt.PCB:
+            model = PCB_test(model)
+        else:
+            model.classifier.classifier = nn.Sequential()
 
-    # Change to test mode
-    model = model.eval()
+        # Change to test mode
+        model = model.eval()
 
-    # Throught it to the gpu
-    if use_gpu:
-        model = model.cuda()
+        # Throught it to the gpu
+        if use_gpu:
+            model = model.cuda()
 
-    # Extract feature
-    with torch.no_grad():
-        features = extract_feature(model, dataloaders)
+        # Extract feature
+        with torch.no_grad():
+            features = extract_feature(model, dataloaders)
 
-        # candidates first
-        num_candidates = dataloaders.dataset.candidates.shape[0]
-        
-        candidate_feature = features[:num_candidates]
-        cast_feature = features[num_candidates:]
+            # candidates first
+            num_candidates = dataloaders.dataset.candidates.shape[0]
+            
+            candidate_feature = features[:num_candidates]
+            cast_feature = features[num_candidates:]
 
-    # Save to Matlab for check
-    result = {
-        'candidate_features': candidate_feature.numpy(), 
-        'candidate_paths': candidate_paths.to_numpy(),
-        'candidate_films': candidate_films.to_numpy(),
-        'cast_features': cast_feature.numpy(), 
-        'cast_paths': cast_paths.to_numpy(),
-        'cast_films': cast_films.to_numpy(), 
-    }
-    scipy.io.savemat(os.path.join(opt.output, os.path.basename(opt.resume) + '_result.mat'), result)
+        # Save to Matlab for check
+        result = {
+            'candidate_features': candidate_feature.numpy(), 
+            'candidate_paths': candidate_paths.to_numpy(),
+            'candidate_films': candidate_films.to_numpy(),
+            'cast_features': cast_feature.numpy(), 
+            'cast_paths': cast_paths.to_numpy(),
+            'cast_films': cast_films.to_numpy(), 
+        }
+        scipy.io.savemat(os.path.join(opt.output, os.path.basename(opt.resume) + '_result.mat'), result)
+
+    if opt.features:
+        result = scipy.io.loadmat(opt.features)
+
+        cast_feature = result['cast_features']
+        cast_path = result['cast_paths']
+        cast_film = result['cast_films']
+        candidate_feature = result['candidate_features']
+        candidate_path = result['candidate_paths']
+        candidate_film = result['candidate_films']
 
     re_rank = evaluate_rerank.run(cast_feature.numpy(), candidate_feature.numpy(), opt.k1, opt.k2, opt.lambda_value)
     print(re_rank)

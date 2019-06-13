@@ -59,8 +59,10 @@ class IMDbTrainset(Dataset):
         self.casts      = pd.concat(self.cast_json, axis=0, keys=self.movies).sort_values().reset_index()
 
         # add "others" label to self.
-        num_casts = self.casts.shape[0]
-        self.casts.loc[num_casts] = ['others', 'no_exist_others.jpg', 'others']
+        if self.mode == 'classify':
+            num_casts = self.casts.shape[0]
+            self.casts.loc[num_casts] = ['others', 'no_exist_others.jpg', 'others']
+
         self.classes = list(self.casts['level_0'])
 
         if self.mode == 'features':
