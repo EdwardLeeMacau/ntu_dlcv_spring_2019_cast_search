@@ -43,7 +43,6 @@ import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.optim as optim
 from torch.nn import functional as F
-from torch.autograd import Variable
 from torch.optim import lr_scheduler
 from torchvision import datasets, transforms
 import utils

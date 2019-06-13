@@ -23,8 +23,8 @@ from __future__ import division, print_function
 import argparse
 import math
 import os
-import time
 import subprocess
+import time
 
 import numpy as np
 import scipy.io
@@ -34,32 +34,33 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision
 import yaml
-from torch.autograd import Variable
 from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
 
+import imdb
 import utils
 from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
 
-#fp16
-try:
-    from apex.fp16_utils import *
-except ImportError: # will be 3.x series
-    print('This is not an error. If you want to use low precision, i.e., fp16, please install the apex with cuda support (https://github.com/NVIDIA/apex) and update pytorch to 1.0')
+# try:
+#     from apex.fp16_utils import *
+# except ImportError: # will be 3.x series
+#     print('This is not an error. If you want to use low precision, i.e., fp16, please install the apex with cuda support (https://github.com/NVIDIA/apex) and update pytorch to 1.0')
 
 
 parser = argparse.ArgumentParser(description='Training')
-parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='gpu_ids: e.g. 0  0,1,2  0,2')
-parser.add_argument('--which_epoch', default='last', type=str, help='0, 1, 2, 3...or last')
-parser.add_argument('--testset', default='./IMDb/val', type=str, help='./Directory of the validation set')
-parser.add_argument('--output', default='./output', type=str, help='./Directory of the output path')
+parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='gpu_ids: e.g. 0  0 1 2  0 2')
+parser.add_argument('--resume', type=str, help='Directory to the checkpoint')
+# parser.add_argument('--which_epoch', default='last', type=str, help='0, 1, 2, 3...or last')
+parser.add_argument('--testset', default='./IMDb/val', type=str, help='Directory of the validation set')
+parser.add_argument('--output', default='./output', type=str, help='Directory of the output path')
+parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
 parser.add_argument('--name', default='ft_ResNet50', type=str, help='save model path')
 parser.add_argument('--batchsize', default=256, type=int, help='batchsize')
 parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
 parser.add_argument('--PCB', action='store_true', help='use PCB' )
 parser.add_argument('--multi', action='store_true', help='use multiple query' )
 parser.add_argument('--fp16', action='store_true', help='use fp16.' )
-parser.add_argument('--ms', default=[1.0], nargs='*', type=float, help='multiple_scale: e.g. 1 1,1.1  1,1.1,1.2')
+parser.add_argument('--ms', default=[1.0], nargs='*', type=float, help="multiple_scale: e.g. '1' '1 1.1'  '1 1.1 1.2'")
 
 opt = parser.parse_args()
 
@@ -69,6 +70,8 @@ opt = parser.parse_args()
 config_path = os.path.join('./model', opt.name, 'opts.yaml')
 with open(config_path, 'r') as stream:
     config = yaml.load(stream)
+    print(config)
+
 opt.fp16 = config['fp16'] 
 opt.PCB = config['PCB']
 opt.use_dense = config['use_dense']
@@ -78,25 +81,19 @@ opt.stride = config['stride']
 if 'nclasses' in config: # tp compatible with old config files
     opt.nclasses = config['nclasses']
 else: 
-    opt.nclasses = 751 
+    opt.nclasses = 199 # Including "others"
 
-str_ids = opt.gpu_ids.split(',')
-
-gpu_ids = []
-for str_id in str_ids:
-    id = int(str_id)
-    if id >=0:
-        gpu_ids.append(id)
-
-print('We use the scales: {}'.format(opt.ms))
+opt.gpu_ids = list(filter(lambda x: x >= 0, opt.gpu_ids))
 ms = [math.sqrt(float(s)) for s in opt.ms]
 
 # set gpu ids
-if len(gpu_ids) > 0:
-    torch.cuda.set_device(gpu_ids[0])
+if len(opt.gpu_ids) > 0:
+    torch.cuda.set_device(opt.gpu_ids[0])
     cudnn.benchmark = True
 
+# set gpu / cpu
 device = utils.selectDevice()
+use_gpu = torch.cuda.is_available()
 
 # ------------------------------------
 # Load Data
@@ -129,45 +126,14 @@ if opt.PCB:
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]) 
     ])
 
-image_datasets = {x: datasets.ImageFolder(os.path.join(opt.testset, x), data_transforms) for x in ['candidate', 'cast']}
-dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=opt.batchsize,
-                                            shuffle=False, num_workers=16) for x in ['gallery','query','multi-query']}
+image_datasets = {x: imdb.IMDbTrainset(os.path.join(opt.testset), data_trasnforms) for x in ['candidate', 'cast']}
+dataloaders = {x: torch.utils.data.DataLoader(
+    image_datasets[x], 
+    batch_size=opt.batchsize,
+    shuffle=False, num_workers=16) for x in ['candidate','cast']
+}
 
-class_names = image_datasets['query'].classes
-use_gpu = torch.cuda.is_available()
-
-# ---------------------------
-# Load model
-# ---------------------------
-def load_network(network):
-    """ 
-      Load model parameters
-    
-      Params:
-      - network: the instance of Nerual Network
-
-      Return:
-      - network: the instance of Nerual Network, with loaded parameter
-    """
-    save_path = os.path.join('./model', name, 'net_{}.pth'.format(opt.which_epoch))
-    network.load_state_dict(torch.load(save_path))
-
-    return network
-
-def fliplr(img):
-    """
-      Horizontal flip the image
-
-      Params:
-      - img: The image in torch.Tensor
-    
-      Returns:
-      - img_filp: The image in torch.Tensor
-    """
-    inv_idx = torch.arange(img.size(3) - 1, -1, -1).long()  # N x C x H x W
-    img_flip = img.index_select(3, inv_idx)
-
-    return img_flip
+# class_names = image_datasets['query'].classes
 
 # --------------------------------------
 # Extract feature
@@ -189,30 +155,33 @@ def extract_feature(model, loader):
     features = torch.FloatTensor()
     
     for index, (img, _) in enumerate(loader, 1):
+        n = img.size()[0]
         print("[{}/{}]".format(index, len(loader)))
         
         ff = torch.FloatTensor(n, 512).zero_().cuda()
         if opt.PCB:
-            ff = torch.FloatTensor(n, 2048, 6).zero_().cuda() # we have six parts
+            ff = torch.FloatTensor(n, 2048, opt.num_part).zero_().cuda() # we have six parts
 
         # Run the images with normal, horizontal flip
         for i in range(2):
-            if (i == 1):
-                img = fliplr(img)
+            if i == 1:
+                img = utils.fliplr(img)
             
             img = img.cuda()
             for scale in ms:
                 if scale != 1:
-                    # bicubic is only  available in pytorch>= 1.1
+                    # bicubic is only available in pytorch >= 1.1
                     img = nn.functional.interpolate(img, scale_factor=scale, mode='bicubic', align_corners=False)
                 outputs = model(img) 
                 ff += outputs
         
+        # -----------------------------------------------------------------------------------
         # norm feature
+        # feature size (n, 2048, 6)
+        # 1. To treat every part equally, I calculate the norm for every 2048-dim part feature.
+        # 2. To keep the cosine score==1, sqrt(6) is added to norm the whole feature (2048*6).
+        # ------------------------------------------------------------------------------------    
         if opt.PCB:
-            # feature size (n,2048,6)
-            # 1. To treat every part equally, I calculate the norm for every 2048-dim part feature.
-            # 2. To keep the cosine score==1, sqrt(6) is added to norm the whole feature (2048*6).
             fnorm = torch.norm(ff, p=2, dim=1, keepdim=True) * np.sqrt(6) 
             ff = ff.div(fnorm.expand_as(ff))
             ff = ff.view(ff.size(0), -1)
@@ -220,7 +189,11 @@ def extract_feature(model, loader):
             fnorm = torch.norm(ff, p=2, dim=1, keepdim=True)
             ff = ff.div(fnorm.expand_as(ff))
 
-        features = torch.cat((features,ff.data.cpu()), 0)
+        print("FF.shape: {}".format(ff.shape))
+
+        features = torch.cat((features, ff.data.cpu()), 0)
+        print("Features.shape: {}".format(features.shape))
+    
     return features
 
 def get_id(img_path):
@@ -241,7 +214,7 @@ def get_id(img_path):
         filename = os.path.basename(path)
         label = filename[0:4]
         camera = filename.split('c')[1]
-        if label[0:2]=='-1':
+        if label[0:2] == '-1':
             labels.append(-1)
         else:
             labels.append(int(label))
@@ -250,15 +223,19 @@ def get_id(img_path):
     return camera_id, labels
 
 def main():
-    gallery_path = image_datasets['gallery'].imgs
-    query_path = image_datasets['query'].imgs
+    candidate_path = image_datasets['candidate'].imgs
+    cast_path = image_datasets['cast'].imgs
 
-    gallery_cam, gallery_label = get_id(gallery_path)
-    query_cam, query_label = get_id(query_path)
+    gallery_cam, gallery_label = get_id(candidate_path)
+    query_cam, query_label = get_id(cast_path)
 
     # -----------------------------------
     # Load Collected data Trained model
     # -----------------------------------
+
+    if opt.PCB:
+        model_structure = PCB(opt.nclasses)
+
     if opt.use_dense:
         model_structure = ft_net_dense(opt.nclasses)
     elif opt.use_NAS:
@@ -266,26 +243,13 @@ def main():
     else:
         model_structure = ft_net(opt.nclasses, stride = opt.stride)
 
-    if opt.PCB:
-        model_structure = PCB(opt.nclasses)
-
-    #if opt.fp16:
-    #    model_structure = network_to_half(model_structure)
-
-    model = load_network(model_structure)
+    model = utils.load_network(model_structure, opt.resume)
 
     # Remove the final fc layer and classifier layer
     if opt.PCB:
-        #if opt.fp16:
-        #    model = PCB_test(model[1])
-        #else:
-            model = PCB_test(model)
+        model = PCB_test(model)
     else:
-        #if opt.fp16:
-            #model[1].model.fc = nn.Sequential()
-            #model[1].classifier = nn.Sequential()
-        #else:
-            model.classifier.classifier = nn.Sequential()
+        model.classifier.classifier = nn.Sequential()
 
     # Change to test mode
     model = model.eval()
@@ -315,4 +279,5 @@ def main():
     os.system('python evaluate_gpu.py | tee -a {}'.format(result))
 
 if __name__ == "__main__":
+    utils.details(opt)
     main()
