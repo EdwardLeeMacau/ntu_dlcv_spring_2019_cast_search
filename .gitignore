@@ -5,7 +5,9 @@
 /baseline/model/*
 /baseline/mat/*
 /baseline/demo_output/*
+
 !/baseline/model/.gitkeep
+!/baseline/mat/pytorch_result_ft_net_dense.mat
 
 # IMDb
 /__pycache__/*
