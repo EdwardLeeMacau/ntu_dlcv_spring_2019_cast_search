@@ -34,7 +34,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision
 import yaml
-from torch.autograd import Variable
 from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
 
@@ -49,17 +48,18 @@ except ImportError: # will be 3.x series
 
 
 parser = argparse.ArgumentParser(description='Training')
-parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='gpu_ids: e.g. 0  0,1,2  0,2')
+parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='gpu_ids: e.g. 0  0 1 2  0 2')
 parser.add_argument('--which_epoch', default='last', type=str, help='0, 1, 2, 3...or last')
-parser.add_argument('--testset', default='./IMDb/val', type=str, help='./Directory of the validation set')
-parser.add_argument('--output', default='./output', type=str, help='./Directory of the output path')
+parser.add_argument('--testset', default='./IMDb/val', type=str, help='Directory of the validation set')
+parser.add_argument('--output', default='./output', type=str, help='Directory of the output path')
+parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
 parser.add_argument('--name', default='ft_ResNet50', type=str, help='save model path')
 parser.add_argument('--batchsize', default=256, type=int, help='batchsize')
 parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
 parser.add_argument('--PCB', action='store_true', help='use PCB' )
 parser.add_argument('--multi', action='store_true', help='use multiple query' )
 parser.add_argument('--fp16', action='store_true', help='use fp16.' )
-parser.add_argument('--ms', default=[1.0], nargs='*', type=float, help='multiple_scale: e.g. 1 1,1.1  1,1.1,1.2')
+parser.add_argument('--ms', default=[1.0], nargs='*', type=float, help="multiple_scale: e.g. '1' '1 1.1'  '1 1.1 1.2'")
 
 opt = parser.parse_args()
 
@@ -78,25 +78,19 @@ opt.stride = config['stride']
 if 'nclasses' in config: # tp compatible with old config files
     opt.nclasses = config['nclasses']
 else: 
-    opt.nclasses = 751 
+    opt.nclasses = 199 # Including "others"
 
-str_ids = opt.gpu_ids.split(',')
-
-gpu_ids = []
-for str_id in str_ids:
-    id = int(str_id)
-    if id >=0:
-        gpu_ids.append(id)
-
-print('We use the scales: {}'.format(opt.ms))
+opt.gpu_ids = list(filter(lambda x: x >= 0, opt.gpu_ids))
 ms = [math.sqrt(float(s)) for s in opt.ms]
 
 # set gpu ids
-if len(gpu_ids) > 0:
-    torch.cuda.set_device(gpu_ids[0])
+if len(opt.gpu_ids) > 0:
+    torch.cuda.set_device(opt.gpu_ids[0])
     cudnn.benchmark = True
 
+# set gpu / cpu
 device = utils.selectDevice()
+use_gpu = torch.cuda.is_available()
 
 # ------------------------------------
 # Load Data
@@ -133,8 +127,7 @@ image_datasets = {x: datasets.ImageFolder(os.path.join(opt.testset, x), data_tra
 dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=opt.batchsize,
                                             shuffle=False, num_workers=16) for x in ['gallery','query','multi-query']}
 
-class_names = image_datasets['query'].classes
-use_gpu = torch.cuda.is_available()
+# class_names = image_datasets['query'].classes
 
 # ---------------------------
 # Load model
@@ -149,7 +142,7 @@ def load_network(network):
       Return:
       - network: the instance of Nerual Network, with loaded parameter
     """
-    save_path = os.path.join('./model', name, 'net_{}.pth'.format(opt.which_epoch))
+    save_path = os.path.join('./model', opt.name, 'net_{}.pth'.format(opt.which_epoch))
     network.load_state_dict(torch.load(save_path))
 
     return network
@@ -189,11 +182,12 @@ def extract_feature(model, loader):
     features = torch.FloatTensor()
     
     for index, (img, _) in enumerate(loader, 1):
+        n, c, h, w = img.size()
         print("[{}/{}]".format(index, len(loader)))
         
         ff = torch.FloatTensor(n, 512).zero_().cuda()
         if opt.PCB:
-            ff = torch.FloatTensor(n, 2048, 6).zero_().cuda() # we have six parts
+            ff = torch.FloatTensor(n, 2048, opt.num_part).zero_().cuda() # we have six parts
 
         # Run the images with normal, horizontal flip
         for i in range(2):
@@ -203,14 +197,14 @@ def extract_feature(model, loader):
             img = img.cuda()
             for scale in ms:
                 if scale != 1:
-                    # bicubic is only  available in pytorch>= 1.1
+                    # bicubic is only available in pytorch >= 1.1
                     img = nn.functional.interpolate(img, scale_factor=scale, mode='bicubic', align_corners=False)
                 outputs = model(img) 
                 ff += outputs
         
         # norm feature
         if opt.PCB:
-            # feature size (n,2048,6)
+            # feature size (n, 2048, 6)
             # 1. To treat every part equally, I calculate the norm for every 2048-dim part feature.
             # 2. To keep the cosine score==1, sqrt(6) is added to norm the whole feature (2048*6).
             fnorm = torch.norm(ff, p=2, dim=1, keepdim=True) * np.sqrt(6) 
@@ -315,4 +309,5 @@ def main():
     os.system('python evaluate_gpu.py | tee -a {}'.format(result))
 
 if __name__ == "__main__":
+    utils.details(opt)
     main()
