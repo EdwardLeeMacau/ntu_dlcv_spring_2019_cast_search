@@ -49,6 +49,7 @@ from torch.nn import functional as F
 from torch.optim import lr_scheduler
 from torchvision import datasets, transforms
 
+import evaluate_rerank
 import utils
 from imdb import IMDbTrainset
 from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
@@ -227,7 +228,7 @@ y_err = {}
 y_err['train'] = []
 y_err['val'] = []
 
-def val(model, loader):    
+def val(model, loader, epoch):    
     model.cpu()
 
     if opt.PCB:
@@ -257,9 +258,13 @@ def val(model, loader):
         'cast_paths': cast_paths.to_numpy(),
         'cast_films': cast_films.to_numpy(), 
     }
-    scipy.io.savemat(os.path.join(opt.output, 'pytorch_result.mat'), result)
+    scipy.io.savemat(os.path.join('model', opt.name, 'net_{}_result.mat'.format(str(epoch).zfill(3))), result)
 
-    os.system('python evaluate_rerank.py | tee -a {}'.format(result))
+    re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
+    print(re_rank)
+    
+    model.cuda()
+    # os.system('python evaluate_rerank.py | tee -a {}'.format(result))
 
     return
         
@@ -354,7 +359,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq
         time_elapsed = time.time() - since
         print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
         
-        val(model)
+        val(model, dataloaders['val'], epoch)
 
     # ------------------------
     # All training epochs ends
