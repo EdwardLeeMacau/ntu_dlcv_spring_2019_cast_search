@@ -92,12 +92,12 @@ class IMDbTrainset(Dataset):
 
     def __getitem__(self, index):
         # Get 1 image and label in mode 'classify'
-        # if self.mode == 'classify':
-        image_path, cast = self.candidates.iat[index, 1], self.candidates.iat[index, 2]
+        if self.mode == 'classify':
+            image_path, cast = self.candidates.iat[index, 1], self.candidates.iat[index, 2]
         
         # Get 1 image, directory, cast in mode 'features'
-        # if self.mode == 'features':
-        #     image_path, cast = self.images.iat[index, 1], self.images.iat[index, 2]
+        if self.mode == 'features':
+            image_path = self.images.iat[index, 1]
 
         # ---------------------------------------------------
         # To Read the images

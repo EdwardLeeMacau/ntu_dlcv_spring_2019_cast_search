@@ -71,10 +71,12 @@ opt = parser.parse_args()
 # ---------------------------------
 # Load configuration of this model
 # ---------------------------------
-config_path = os.path.join('./model', opt.name, 'opts.yaml')
+config_folder = os.path.dirname(opt.resume)
+config_path = os.path.join(config_folder, 'opts.yaml')
 with open(config_path, 'r') as stream:
     config = yaml.load(stream)
 
+opt.name = config['name']
 opt.PCB = config['PCB']
 opt.use_dense = config['use_dense']
 opt.use_NAS = config['use_NAS']
@@ -164,11 +166,11 @@ def extract_feature(model, loader):
     """
     features = torch.FloatTensor()
     
-    for index, (img, _) in enumerate(loader, 1):
+    for index, (img) in enumerate(loader, 1):
         n = img.size()[0]
         
         print('[{:5s}] [Iteration {:4d}/{:4d}]'.format('val', index, len(loader)))
-        
+ 
         if not opt.PCB:
             ff = torch.FloatTensor(n, 512).zero_().cuda()
         if opt.PCB:
@@ -179,12 +181,12 @@ def extract_feature(model, loader):
             if i == 1:
                 img = utils.fliplr(img)
             
-            img = img.cuda()
+            input_img = img.cuda()
             for scale in ms:
                 if scale != 1:
                     # bicubic is only available in pytorch >= 1.1
-                    img = nn.functional.interpolate(img, scale_factor=scale, mode='bicubic', align_corners=False)
-                outputs = model(img) 
+                    input_img = nn.functional.interpolate(input_img, scale_factor=scale, mode='bicubic', align_corners=False)
+                outputs = model(input_img) 
                 ff += outputs
         
         # -----------------------------------------------------------------------------------
@@ -201,10 +203,12 @@ def extract_feature(model, loader):
             fnorm = torch.norm(ff, p=2, dim=1, keepdim=True)
             ff = ff.div(fnorm.expand_as(ff))
 
-        print("FF.shape: {}".format(ff.shape))
+        # FF.shape = (n, 2048 * num_part)
+        # print("FF.shape: {}".format(ff.shape))
 
+        # Features = (images, 2048 * num_part)
         features = torch.cat((features, ff.data.cpu()), 0)
-        print("Features.shape: {}".format(features.shape))
+        # print("Features.shape: {}".format(features.shape))
     
     return features
 
@@ -246,15 +250,15 @@ def main():
     # -----------------------------------
     # Load datas and trained model
     # -----------------------------------
-    if opt.PCB:
-        model_structure = PCB(opt.nclasses)
-
     if opt.use_dense:
         model_structure = ft_net_dense(opt.nclasses)
     elif opt.use_NAS:
         model_structure = ft_net_NAS(opt.nclasses)
     else:
         model_structure = ft_net(opt.nclasses, stride = opt.stride)
+
+    if opt.PCB:
+        model_structure = PCB(opt.nclasses)
 
     model = utils.load_network(model_structure, opt.resume)
 
