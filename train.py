@@ -78,9 +78,9 @@ parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
 # Training setting
 parser.add_argument('--batchsize', default=32, type=int, help='batchsize in training')
 parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
-parser.add_argument('--milestones', default=[5, 10, 15, 20], nargs='*', type=int)
+parser.add_argument('--milestones', default=[10, 20, 30], nargs='*', type=int)
 parser.add_argument('--gamma', default=0.1, type=float)
-parser.add_argument('--epochs', default=20, type=int)
+parser.add_argument('--epochs', default=60, type=int)
 parser.add_argument('--color_jitter', action='store_true', help='use color jitter in training' )
 parser.add_argument('--erasing_p', default=0, type=float, help='Random Erasing probability, in [0,1]')
 parser.add_argument('--warm_epoch', default=0, type=int, help='the first K epoch that needs warm up')
@@ -96,6 +96,7 @@ parser.add_argument('--trainset', default='./IMDb/train', type=str, help='Direct
 parser.add_argument('--valset', default='./IMDb/val', type=str, help='Directory of validation set')
 # Device Setting
 parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='')
+parser.add_argument('--threads', default=8, type=int)
 # Others Setting
 parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
 parser.add_argument('--log_interval', default=10, type=int)
@@ -177,7 +178,7 @@ dataloaders['train'] = torch.utils.data.DataLoader(
     batch_size=opt.batchsize, 
     drop_last=True,
     shuffle=True, 
-    num_workers=8, 
+    num_workers=opt.threads,
     pin_memory=True
 )
 dataloaders['val'] = torch.utils.data.DataLoader(
@@ -185,26 +186,26 @@ dataloaders['val'] = torch.utils.data.DataLoader(
     batch_size=opt.batchsize, 
     drop_last=True,
     shuffle=True, 
-    num_workers=8, 
+    num_workers=opt.threads, 
     pin_memory=True
 )
 
 class_names = image_datasets['train'].classes
 opt.len_class = len(class_names) # For saving in yaml
-print(class_names)
+# print(class_names)
 
 use_gpu = torch.cuda.is_available()
 # DEVICE = utils.selectDevice()
 
 # Show I/O time delay for 1 iterations 
 # since = time.time()
-inputs_train, classes_train = next(iter(dataloaders['train']))
-inputs_val, classes_val = next(iter(dataloaders['val']))
-print('\ninputs_train :', inputs_train.shape)
-print('classes_train :', classes_train.shape, '\n',  classes_train, '\n')
-print('inputs_val :', inputs_val.shape)
-print('classes_val :', classes_val.shape, '\n', classes_val, '\n')
-print()
+# inputs_train, classes_train = next(iter(dataloaders['train']))
+# inputs_val, classes_val = next(iter(dataloaders['val']))
+# print('\ninputs_train :', inputs_train.shape)
+# print('classes_train :', classes_train.shape, '\n',  classes_train, '\n')
+# print('inputs_val :', inputs_val.shape)
+# print('classes_val :', classes_val.shape, '\n', classes_val, '\n')
+# print()
 # print(time.time() - since)
 
 ######################################################################
@@ -326,7 +327,7 @@ def extract_feature(model, loader):
     
     return features
 
-def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=10, debug=False):
+def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, debug=False):
     since = time.time()
 
     best_model_wts = model.state_dict()
@@ -399,7 +400,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq
             epoch_acc = running_corrects / len(image_datasets['train'])
             
             if index % opt.log_interval == 0:
-                print('[{:5s}] [Epoch {:2d}/{:2d}] [Iteration {:4d}/{:4d}] [Loss: {:.4f}] [Acc: {:.2%}]'.format('train', epoch, num_epochs, index, len(dataloaders['train']), epoch_loss, epoch_acc))
+                print('[{:5s}] [Epoch {:2d}/{:2d}] [Iteration {:4d}/{:4d}] [Loss: {:.4f}] [Acc: {:.2%}]'.format('train', epoch, num_epochs, index, len(dataloaders['train']), running_loss / index / opt.batchsize, running_corrects / index / opt.batchsize))
             
             y_loss['train'].append(epoch_loss)
             y_err['train'].append(1.0 - epoch_acc)            
@@ -547,9 +548,7 @@ else:
 
 if __name__ == "__main__":
     dir_name = os.path.join('./model', opt.name)
-    os.makedirs(dir_name, mode=0o777, exist_ok=True)
-    # if not os.path.isdir(dir_name):
-    #     os.mkdir(dir_name)
+    os.makedirs(dir_name, exist_ok=True)
 
     # record every run
     copyfile('./train.py', os.path.join(dir_name, 'train.py'))
@@ -572,7 +571,7 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss()
     # Decay LR by a factor of 0.1 every 40 epochs
     # exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=40, gamma=0.1)
-    lr_scheduler.MultiStepLR(optimizer_ft, milestones=opt.milestones, gamma=opt.gamma)
+    scheduler = lr_scheduler.MultiStepLR(optimizer_ft, milestones=opt.milestones, gamma=opt.gamma)
     
-    model = train_model(model, criterion, optimizer_ft, lr_scheduler, 
+    model = train_model(model, criterion, optimizer_ft, scheduler, 
                 num_epochs=opt.epochs, save_freq=opt.save_interval, debug=opt.debug)
