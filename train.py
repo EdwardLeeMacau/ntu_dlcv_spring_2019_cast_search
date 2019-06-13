@@ -84,6 +84,11 @@ parser.add_argument('--epochs', default=20, type=int)
 parser.add_argument('--color_jitter', action='store_true', help='use color jitter in training' )
 parser.add_argument('--erasing_p', default=0, type=float, help='Random Erasing probability, in [0,1]')
 parser.add_argument('--warm_epoch', default=0, type=int, help='the first K epoch that needs warm up')
+parser.add_argument('--optimizer', default='SGD', type=str, help='choose optimizer')
+parser.add_argument('--weight_decay', default=5e-4, type=float)
+parser.add_argument('--momentum', default=0.9, type=float)
+parser.add_argument('--b1', default=0.9, type=float)
+parser.add_argument('--b2', default=0.999, type=float)
 # I/O Setting 
 parser.add_argument('--name', default='PCB', type=str, help='output model name')
 parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
@@ -152,13 +157,15 @@ image_datasets['train'] = IMDbTrainset(
     movie_path=opt.trainset, 
     feature_path=None, 
     label_path=opt.trainset+"_GT.json", 
+    mode='classify',
     debug=opt.debug, 
     transform=data_transforms['train']
 )
 image_datasets['val'] = IMDbTrainset(
     movie_path=opt.valset, 
     feature_path=None, 
-    label_path=opt.valset+"_GT.json", 
+    label_path=opt.valset+"_GT.json",
+    mode='features',
     debug=opt.debug, 
     transform=data_transforms['val']
 )
@@ -439,18 +446,35 @@ else:
                      #+list(map(id, model.classifier7.parameters() ))
                       )
     base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
-    optimizer_ft = optim.SGD([
-             {'params': base_params, 'lr': 0.1*opt.lr},
-             {'params': model.model.fc.parameters(), 'lr': opt.lr},
-             {'params': model.classifier0.parameters(), 'lr': opt.lr},
-             {'params': model.classifier1.parameters(), 'lr': opt.lr},
-             {'params': model.classifier2.parameters(), 'lr': opt.lr},
-             {'params': model.classifier3.parameters(), 'lr': opt.lr},
-             {'params': model.classifier4.parameters(), 'lr': opt.lr},
-             {'params': model.classifier5.parameters(), 'lr': opt.lr},
-             #{'params': model.classifier6.parameters(), 'lr': 0.01},
-             #{'params': model.classifier7.parameters(), 'lr': 0.01}
-         ], weight_decay=5e-4, momentum=0.9, nesterov=True)
+    
+    if opt.optimizer == 'SGD':
+        optimizer_ft = optim.SGD([
+                {'params': base_params, 'lr': 0.1 * opt.lr},
+                {'params': model.model.fc.parameters(), 'lr': opt.lr},
+                {'params': model.classifier0.parameters(), 'lr': opt.lr},
+                {'params': model.classifier1.parameters(), 'lr': opt.lr},
+                {'params': model.classifier2.parameters(), 'lr': opt.lr},
+                {'params': model.classifier3.parameters(), 'lr': opt.lr},
+                {'params': model.classifier4.parameters(), 'lr': opt.lr},
+                {'params': model.classifier5.parameters(), 'lr': opt.lr},
+                #{'params': model.classifier6.parameters(), 'lr': 0.01},
+                #{'params': model.classifier7.parameters(), 'lr': 0.01}
+            ], weight_decay=opt.weight_decay, momentum=opt.momentum, nesterov=True)
+
+    elif opt.optimizer == 'Adam':
+        optimizer_ft = optim.Adam([
+                {'params': base_params, 'lr': 0.1 * opt.lr},
+                {'params': model.model.fc.parameters(), 'lr': opt.lr},
+                {'params': model.classifier0.parameters(), 'lr': opt.lr},
+                {'params': model.classifier1.parameters(), 'lr': opt.lr},
+                {'params': model.classifier2.parameters(), 'lr': opt.lr},
+                {'params': model.classifier3.parameters(), 'lr': opt.lr},
+                {'params': model.classifier4.parameters(), 'lr': opt.lr},
+                {'params': model.classifier5.parameters(), 'lr': opt.lr},
+                #{'params': model.classifier6.parameters(), 'lr': 0.01},
+                #{'params': model.classifier7.parameters(), 'lr': 0.01}
+            ], weight_decay=opt.weight_decay, betas=(opt.b1, opt.b2), nesterov=True)
+
 
 ######################################################################
 # Train and evaluate
