@@ -50,15 +50,15 @@ class IMDbTrainset(Dataset):
 
         self.transform = transform
 
-        self.movies         = os.listdir(self.movie_path)
+        self.movies         = sorted(os.listdir(self.movie_path))
         self.candidate_json = [pd.read_json(os.path.join(self.movie_path, filename, 'candidate.json'), orient='index', typ='series') 
-                                  for filename in sorted(os.listdir(self.movie_path))]
+                                  for filename in self.movies]
         self.cast_json      = [pd.read_json(os.path.join(self.movie_path, filename, 'cast.json'), orient='index', typ='series') 
-                                  for filename in sorted(os.listdir(self.movie_path))]
+                                  for filename in self.movies]
 
         # Read as pandas.DataFrame and make it
         self.candidates = pd.concat(self.candidate_json, axis=0, keys=self.movies).reset_index()
-        self.casts      = pd.concat(self.cast_json, axis=0, keys=self.movies).sort_values().reset_index()
+        self.casts      = pd.concat(self.cast_json, axis=0, keys=self.movies).reset_index()
 
         # add "others" label to self.
         if self.mode == 'classify':

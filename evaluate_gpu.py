@@ -7,7 +7,7 @@
   Usage:
   - python3 evaluate_gpu.py --name PCB
 """
-
+import csv
 import os
 import argparse
 
@@ -17,6 +17,8 @@ import torch
 
 def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
     # qf contains 1 image feature
+    # print("Qf.shape: ", qf.shape)
+    # print("GF.shape: ", gf.shape)
     query = qf.view(-1,1)
     # print(query.shape)
     
@@ -95,56 +97,74 @@ if __name__ == "__main__":
     parser.add_argument('--features', type=str, help='directory of the features of cast and candidates.')
     parser.add_argument('--multi', action='store_true', help='if true, ranking multi-cast at the same time')
     parser.add_argument('--predict', action='store_true', help='if true, label is un-availables.')
+    parser.add_argument('--output', type=str)
+
 
     opt = parser.parse_args()
 
     result = scipy.io.loadmat(opt.features)
     
-    cast_feature = result['cast_features']
-    cast_path = result['cast_paths']
-    cast_film = result['cast_films']
-    candidate_feature = result['candidate_features']
-    candidate_path = result['candidate_paths']
-    candidate_film = result['candidate_films']
+    # print(result['cast_paths'].shape)
+    # print(result['cast_paths'])
 
+    cast_feature = torch.FloatTensor(result['cast_features'])
+    cast_name = result['cast_names'].reshape(-1)
+    cast_film = result['cast_films'].reshape(-1)
+    print(cast_name)
     print(cast_film)
-
-    # query_feature = torch.FloatTensor(result['query_f'])
-    # query_cam     = result['query_cam'][0]
-    # query_label   = result['query_label'][0]
-    # gallery_feature = torch.FloatTensor(result['gallery_f'])
-    # gallery_cam     = result['gallery_cam'][0]
-    # gallery_label   = result['gallery_label'][0]
-
-    # multi = os.path.isfile('./mat/multi_query_{}.mat'.format(opt.name))
+    candidate_feature = torch.FloatTensor(result['candidate_features'])
+    candidate_name = result['candidate_names'].reshape(-1)
+    candidate_film = result['candidate_films'].reshape(-1)
+    print(candidate_name)
+    print(candidate_film)
 
     if not opt.multi:
         cast_feature = cast_feature.cuda()
         candidate_feature = candidate_feature.cuda()
 
         print("cast_feature.shape: ", cast_feature.shape)
+        print("cast_film.shape:    ", cast_film.shape)
+        print("cast_name.shape:    ", cast_name.shape)
+        # print(cast_path)
+
         CMC = torch.IntTensor(len(candidate_film)).zero_()
         ap = 0.0
-        # print(query_label)
+
+        result = []
         for i in range(cast_feature.shape[0]):
-            raise NotImplementedError
-            index_from = None
-            index_to = None
+            print("[{}/{}]".format(i, cast_feature.shape[0]))
+            
+            mask = torch.from_numpy((candidate_film == cast_film[i]).astype(np.uint8)).byte()
+            # print("select_film: ", cast_film[i])
+            # print("select_candidate.shape: ", candidate_film[mask].shape)
+            # print(mask.dtype)
             
             index, (ap_tmp, CMC_tmp) = evaluate(
-                cast_feature[i], cast_path[i], cast_film[i], 
-                candidate_feature[index_from: index_to], candidate_path[index_from: index_to], candidate_film[index_from: index_to]
+                cast_feature[i], cast_name[i], cast_film[i], 
+                candidate_feature[mask], candidate_name[mask], candidate_film[mask]
             )
+            # print("Index.shape: ", index.shape)
+            # print(cast_path[i].tolist()[0].split('/')[-1].split('.')[0])
+            # print(type(candidate_path[index].tolist()))
+            names = candidate_name[index].tolist()
+            cast_id = os.path.basename(cast_name.tolist()[i]).split('.')
+            result.append({'Id': cast_id, 'Rank': ' '.join(names)})
+
             if CMC_tmp[0] == -1 :continue
             CMC = CMC + CMC_tmp
             ap += ap_tmp
-            #print(i, CMC_tmp[0])
+
+        with open('result.csv', 'w') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+
+            writer.writeheader()
+            for r in result:
+                writer.writerow(r)
+
 
         CMC = CMC.float()
-        CMC = CMC/len(cast_feature.shape[0]) #average CMC
-        print('\nRank@1:%f\nRank@5:%f\nRank@10:%f\nmAP:%f'%(CMC[0],CMC[4],CMC[9],ap/len(query_label)))
-
-        return
+        CMC = CMC / cast_feature.shape[0] #average CMC
+        print('\nRank@1:%f\nRank@5:%f\nRank@10:%f\nmAP:%f'%(CMC[0], CMC[4], CMC[9], ap / len(cast_name)))
 
     if opt.multi:
         # Not tested.
@@ -173,5 +193,3 @@ if __name__ == "__main__":
         CMC = CMC.float()
         CMC = CMC/len(query_label) #average CMC
         print('multi Rank@1:%f Rank@5:%f Rank@10:%f mAP:%f'%(CMC[0],CMC[4],CMC[9],ap/len(query_label)))
-
-        return

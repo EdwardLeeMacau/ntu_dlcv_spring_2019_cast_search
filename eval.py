@@ -73,7 +73,7 @@ def eval(submission_file, gt_file):
     print(len(gt_dict))
     print(len(submission))
     mAP = get_mAP(gt_dict, submission)
-    print('mAP: {:.4f}'.format(mAP))
+    print('mAP: {:.2%}'.format(mAP))
 
 
 if __name__ == '__main__':

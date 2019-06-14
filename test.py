@@ -290,19 +290,19 @@ def main():
             cast_feature = features[num_candidates:]
 
         candidate_feature = candidate_feature.numpy()
-        candidate_paths   = candidate_paths.to_numpy()
-        candidate_films   = candidate_films.to_numpy()
+        candidate_names   = np.asarray([os.path.basename(name).split('.')[0] for name in candidate_paths.tolist()])
+        candidate_films   = np.asarray([name for name in candidate_films.tolist()])
         cast_feature      = cast_feature.numpy()
-        cast_paths        = cast_paths.to_numpy()
-        cast_films        = cast_films.to_numpy()
+        cast_names        = np.asarray([os.path.basename(name).split('.')[0] for name in cast_paths.tolist()])
+        cast_films        = np.asarray([name for name in cast_films.tolist()])
 
         # Save to Matlab for check
         result = {
             'candidate_features': candidate_feature, 
-            'candidate_paths': candidate_paths,
+            'candidate_names': candidate_names,
             'candidate_films': candidate_films,
             'cast_features': cast_feature, 
-            'cast_paths': cast_paths,
+            'cast_names': cast_names,
             'cast_films': cast_films, 
         }
 
@@ -314,21 +314,21 @@ def main():
         result = scipy.io.loadmat(opt.features)
 
         cast_feature = result['cast_features']
-        cast_path = result['cast_paths']
-        cast_film = result['cast_films']
+        cast_paths = result['cast_paths']
+        cast_films = result['cast_films']
         candidate_feature = result['candidate_features']
-        candidate_path = result['candidate_paths']
-        candidate_film = result['candidate_films']
+        candidate_paths = result['candidate_paths']
+        candidate_films = result['candidate_films']
 
     print("Cast_feature.shape {}".format(cast_feature.shape))
-    print("Cast_film.shape:   {}".format(cast_film.shape))
-    print("Cast_path.shape:   {}".format(cast_path.shape))
+    print("Cast_film.shape:   {}".format(cast_films.shape))
+    print("Cast_name.shape:   {}".format(cast_names.shape))
     print("Candidate_feature.shape: {}".format(candidate_feature.shape))
-    print("Candidate_path.shape: {}".format(candidate_path.shape))
-    print("Candidate_film.shape: {}".format(candidate_film.shape))
+    print("Candidate_name.shape: {}".format(candidate_names.shape))
+    print("Candidate_film.shape: {}".format(candidate_films.shape))
     
-    re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
-    print(re_rank)
+    # re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
+    # print(re_rank)
 
     # subprocess.call(['evaluate_gpu.py', *args])
 

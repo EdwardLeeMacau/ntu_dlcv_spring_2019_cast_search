@@ -260,8 +260,8 @@ def val(model, loader, epoch):
     }
     scipy.io.savemat(os.path.join('model', opt.name, 'net_{}_result.mat'.format(str(epoch).zfill(3))), result)
 
-    re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
-    print(re_rank)
+    # re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
+    # print(re_rank)
     
     model.cuda()
     # os.system('python evaluate_rerank.py | tee -a {}'.format(result))
@@ -437,19 +437,20 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq
 #---------------------------
 x_epoch = []
 fig = plt.figure(figsize=(12.8, 7.2))
-ax0 = fig.add_subplot(121, title="loss")
-ax1 = fig.add_subplot(122, title="error")
+# ax0 = fig.add_subplot(121, title="loss")
+# ax1 = fig.add_subplot(122, title="error")
 
 def draw_curve(current_epoch, save_jpg='train.jpg'):
     x_epoch.append(current_epoch)
-    ax0.plot(x_epoch, y_loss['train'], 'bo-', label='train')
-    ax0.plot(x_epoch, y_loss['val'], 'ro-', label='val')
-    ax1.plot(x_epoch, y_err['train'], 'bo-', label='train')
-    ax1.plot(x_epoch, y_err['val'], 'ro-', label='val')
+    fig.plot(x_epoch, y_loss['train'], 'bo-', label='train')
+    fig.plot(x_epoch, y_loss['val'], 'ro-', label='val')
+    # ax1.plot(x_epoch, y_err['train'], 'bo-', label='train')
+    # ax1.plot(x_epoch, y_err['val'], 'ro-', label='val')
 
     if current_epoch == 0:
-        ax0.legend()
-        ax1.legend()
+        # ax0.legend()
+        # ax1.legend()
+        fig.legend()
 
     fig.savefig(os.path.join('./model', opt.name, save_jpg))
 
