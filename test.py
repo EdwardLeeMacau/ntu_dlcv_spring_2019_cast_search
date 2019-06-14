@@ -56,7 +56,7 @@ parser.add_argument('--testset', default='./IMDb/val', type=str, help='Directory
 parser.add_argument('--batchsize', default=128, type=int, help='batchsize')
 parser.add_argument('--features', type=str, help='Directory of the features.mat')
 # I/O Setting
-parser.add_argument('--output', default='./output', type=str, help='Directory of the output path')
+# parser.add_argument('--output', default='./output', type=str, help='Directory of the output path')
 parser.add_argument('--name', default='ft_ResNet50', type=str, help='save model path')
 # Model Setting
 parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
@@ -306,9 +306,9 @@ def main():
             'cast_films': cast_films, 
         }
 
-        print("Features saved to {}".format(os.path.join(opt.output, os.path.basename(opt.resume).split('.')[0] + '_result.mat')))
-        scipy.io.savemat('result.mat', result)
-        scipy.io.savemat(os.path.join(opt.output, os.path.basename(opt.resume).split('.')[0] + '_result.mat'), result)
+        print("Features saved to {}".format(os.path.join(os.path.dirname(opt.resume), os.path.basename(opt.resume).split('.')[0] + '_result.mat')))
+        # scipy.io.savemat('result.mat', result)
+        scipy.io.savemat(os.path.join(os.path.dirname(opt.resume), os.path.basename(opt.resume).split('.')[0] + '_result.mat'), result)
 
     if opt.features:
         result = scipy.io.loadmat(opt.features)
@@ -320,9 +320,13 @@ def main():
         candidate_path = result['candidate_paths']
         candidate_film = result['candidate_films']
 
-    print(cast_feature.shape)
-    print(cast_film)
-    raise NotImplementedError
+    print("Cast_feature.shape {}".format(cast_feature.shape))
+    print("Cast_film.shape:   {}".format(cast_film.shape))
+    print("Cast_path.shape:   {}".format(cast_path.shape))
+    print("Candidate_feature.shape: {}".format(candidate_feature.shape))
+    print("Candidate_path.shape: {}".format(candidate_path.shape))
+    print("Candidate_film.shape: {}".format(candidate_film.shape))
+    
     re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
     print(re_rank)
 

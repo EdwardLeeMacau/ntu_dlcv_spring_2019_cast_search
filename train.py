@@ -395,15 +395,15 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq
             # statistics
             running_loss += loss.item() * n
             running_corrects += float(torch.sum(preds == labels.data))
-
-            epoch_loss = running_loss / len(image_datasets['train'])
-            epoch_acc = running_corrects / len(image_datasets['train'])
             
             if index % opt.log_interval == 0:
                 print('[{:5s}] [Epoch {:2d}/{:2d}] [Iteration {:4d}/{:4d}] [Loss: {:.4f}] [Acc: {:.2%}]'.format('train', epoch, num_epochs, index, len(dataloaders['train']), running_loss / index / opt.batchsize, running_corrects / index / opt.batchsize))
             
-            y_loss['train'].append(epoch_loss)
-            y_err['train'].append(1.0 - epoch_acc)            
+        epoch_loss = running_loss / len(image_datasets['train'])
+        epoch_acc  = running_corrects / len(image_datasets['train'])
+
+        y_loss['train'].append(epoch_loss)
+        y_err['train'].append(1.0 - epoch_acc)            
 
         # deep copy the model
         if epoch % save_freq == 0:
@@ -536,7 +536,7 @@ else:
                 {'params': model.classifier5.parameters(), 'lr': opt.lr},
                 #{'params': model.classifier6.parameters(), 'lr': 0.01},
                 #{'params': model.classifier7.parameters(), 'lr': 0.01}
-            ], weight_decay=opt.weight_decay, betas=(opt.b1, opt.b2), nesterov=True)
+            ], weight_decay=opt.weight_decay, betas=(opt.b1, opt.b2))
 
 
 ######################################################################
