@@ -75,6 +75,7 @@ parser.add_argument('--use_NAS', action='store_true', help='use NAS' )
 parser.add_argument('--PCB', action='store_true', help='use PCB+ResNet50' )
 parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
 parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
+parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
 # Training setting
 parser.add_argument('--batchsize', default=32, type=int, help='batchsize in training')
 parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
@@ -109,6 +110,8 @@ if len(opt.gpu_ids) > 0:
     torch.cuda.set_device(opt.gpu_ids[0])
     cudnn.benchmark = True
 
+opt.img_size = tuple(opt.img_size)
+
 # ---------------------------------
 # Dataaugmentation setting
 # ---------------------------------
@@ -126,20 +129,20 @@ transform_val_list = [
         transforms.Resize(size=(256,128),interpolation=3), #Image.BICUBIC
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ]
+    ]
 
 if opt.PCB:
     transform_train_list = [
-        transforms.Resize((384,192), interpolation=3),
+        transforms.Resize(opt.img_size, interpolation=3),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ]
+    ]
     transform_val_list = [
-        transforms.Resize(size=(384,192),interpolation=3), #Image.BICUBIC
+        transforms.Resize(opt.img_size, interpolation=3), #Image.BICUBIC
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ]
+    ]
 
 if opt.erasing_p > 0:
     transform_train_list = transform_train_list +  [RandomErasing(probability = opt.erasing_p, mean=[0.0, 0.0, 0.0])]
@@ -197,17 +200,6 @@ opt.len_class = len(class_names) # For saving in yaml
 use_gpu = torch.cuda.is_available()
 # DEVICE = utils.selectDevice()
 
-# Show I/O time delay for 1 iterations 
-# since = time.time()
-# inputs_train, classes_train = next(iter(dataloaders['train']))
-# inputs_val, classes_val = next(iter(dataloaders['val']))
-# print('\ninputs_train :', inputs_train.shape)
-# print('classes_train :', classes_train.shape, '\n',  classes_train, '\n')
-# print('inputs_val :', inputs_val.shape)
-# print('classes_val :', classes_val.shape, '\n', classes_val, '\n')
-# print()
-# print(time.time() - since)
-
 ######################################################################
 # Training the model
 # ------------------
@@ -227,6 +219,9 @@ y_loss['val'] = []
 y_err = {}
 y_err['train'] = []
 y_err['val'] = []
+y_mAP = {}
+y_mAP['val'] = []
+
 
 def val(model, loader, epoch):    
     model.cpu()
@@ -436,23 +431,25 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq
 # Draw Curve
 #---------------------------
 x_epoch = []
-fig = plt.figure(figsize=(12.8, 7.2))
+plt.figure(figsize=(12.8, 7.2))
 # ax0 = fig.add_subplot(121, title="loss")
 # ax1 = fig.add_subplot(122, title="error")
 
 def draw_curve(current_epoch, save_jpg='train.jpg'):
+    plt.clf()
+
     x_epoch.append(current_epoch)
-    fig.plot(x_epoch, y_loss['train'], 'bo-', label='train')
-    fig.plot(x_epoch, y_loss['val'], 'ro-', label='val')
+    plt.plot(x_epoch, y_loss['train'], 'bo-', label='Train Loss')
+    plt.plot(x_epoch, y_loss['val'], 'ro-', label='Validation Loss')
     # ax1.plot(x_epoch, y_err['train'], 'bo-', label='train')
     # ax1.plot(x_epoch, y_err['val'], 'ro-', label='val')
 
     if current_epoch == 0:
         # ax0.legend()
         # ax1.legend()
-        fig.legend()
+        plt.legend(loc=0)
 
-    fig.savefig(os.path.join('./model', opt.name, save_jpg))
+    plt.savefig(os.path.join('./model', opt.name, save_jpg))
 
 ######################################################################
 # Save model
