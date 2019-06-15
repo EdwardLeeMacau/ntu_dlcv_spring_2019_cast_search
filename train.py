@@ -343,7 +343,7 @@ def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, de
 
             loss = criterion(part[0], labels)
             for i in range(1, opt.num_part):
-                loss += criterion(part[i + 1], labels)
+                loss += criterion(part[i], labels)
 
             # print('Labels: ', labels)
             # print('Preds: ', preds)
