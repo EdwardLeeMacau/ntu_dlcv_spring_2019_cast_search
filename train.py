@@ -330,7 +330,11 @@ def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, de
                 part[i] = outputs[i]
 
             # score = reduce((lambda x, y: x + y), [F.softmax(tensor, dim=1) for tensor in part.values()])
-            score = sm(part[0]) + sm(part[1]) + sm(part[2]) + sm(part[3]) + sm(part[4]) + sm(part[5])
+            # score = sm(part[0]) + sm(part[1]) + sm(part[2]) + sm(part[3]) + sm(part[4]) + sm(part[5])
+            score = 0
+            for i in range(opt.num_part):
+                score += sm(part[i])
+
             _, preds = torch.max(score.data, 1)
 
             if debug:
@@ -338,8 +342,10 @@ def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, de
                 print("labels : ", labels , '\n')
 
             loss = criterion(part[0], labels)
-            for i in range(opt.num_part - 1):
-                loss += criterion(part[i+1], labels)
+            # for i in range(opt.num_part - 1):
+            #     loss += criterion(part[i+1], labels)
+
+
 
             # print('Labels: ', labels)
             # print('Preds: ', preds)
@@ -440,11 +446,11 @@ if not opt.PCB:
 if opt.PCB:
     ignored_params = list(map(id, model.model.fc.parameters() ))
     ignored_params += (list(map(id, model.classifier0.parameters() )) 
-                     +list(map(id, model.classifier1.parameters() ))
-                     +list(map(id, model.classifier2.parameters() ))
-                     +list(map(id, model.classifier3.parameters() ))
-                     +list(map(id, model.classifier4.parameters() ))
-                     +list(map(id, model.classifier5.parameters() ))
+                    #  +list(map(id, model.classifier1.parameters() ))
+                    #  +list(map(id, model.classifier2.parameters() ))
+                    #  +list(map(id, model.classifier3.parameters() ))
+                    #  +list(map(id, model.classifier4.parameters() ))
+                    #  +list(map(id, model.classifier5.parameters() ))
                       )
     base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
     
@@ -456,11 +462,11 @@ if opt.PCB:
                 {'params': base_params, 'lr': 0.1 * opt.lr},
                 {'params': model.model.fc.parameters(), 'lr': opt.lr},
                 {'params': model.classifier0.parameters(), 'lr': opt.lr},
-                {'params': model.classifier1.parameters(), 'lr': opt.lr},
-                {'params': model.classifier2.parameters(), 'lr': opt.lr},
-                {'params': model.classifier3.parameters(), 'lr': opt.lr},
-                {'params': model.classifier4.parameters(), 'lr': opt.lr},
-                {'params': model.classifier5.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier1.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier2.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier3.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier4.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier5.parameters(), 'lr': opt.lr},
             ], weight_decay=opt.weight_decay, momentum=opt.momentum, nesterov=True)
 
     elif opt.optimizer == 'Adam':
@@ -468,11 +474,11 @@ if opt.PCB:
                 {'params': base_params, 'lr': 0.1 * opt.lr},
                 {'params': model.model.fc.parameters(), 'lr': opt.lr},
                 {'params': model.classifier0.parameters(), 'lr': opt.lr},
-                {'params': model.classifier1.parameters(), 'lr': opt.lr},
-                {'params': model.classifier2.parameters(), 'lr': opt.lr},
-                {'params': model.classifier3.parameters(), 'lr': opt.lr},
-                {'params': model.classifier4.parameters(), 'lr': opt.lr},
-                {'params': model.classifier5.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier1.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier2.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier3.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier4.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier5.parameters(), 'lr': opt.lr},
             ], weight_decay=opt.weight_decay, betas=(opt.b1, opt.b2))
 
 if __name__ == "__main__":
