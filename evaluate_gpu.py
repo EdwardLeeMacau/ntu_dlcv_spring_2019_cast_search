@@ -15,6 +15,8 @@ import numpy as np
 import scipy.io
 import torch
 
+import eval
+
 def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
     # qf contains 1 image feature
     # print("Qf.shape: ", qf.shape)
@@ -22,10 +24,10 @@ def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
     query = qf.view(-1,1)
     # print(query.shape)
     
-    # ------------------------------------
-    # Dot product
-    #   score[i] = np.dot(gf[i], query)
-    # ------------------------------------
+    # ---------------------------------- # 
+    # Dot product                        #
+    #   score[i] = np.dot(gf[i], query)  #
+    # ---------------------------------- #
     score = torch.mm(gf, query)
     score = score.squeeze(1).cpu()
     score = score.numpy()
@@ -44,13 +46,13 @@ def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
     query_index  = np.argwhere(gl==ql)
     camera_index = np.argwhere(gc==qc)
 
-    # ----------------------------------------------------------------------
-    # np.intersect1d(arr1, arr2)
-    #   Treat the np.array() as a set, find the intersection between 2 sets
-    # 
-    # np.setdiff1d(arr1, arr2)
-    #   Set subtraction, return the elements in arr1 but not in arr2
-    # ----------------------------------------------------------------------
+    # ---------------------------------------------------------------------- # 
+    # np.intersect1d(arr1, arr2)                                             # 
+    #   Treat the np.array() as a set, find the intersection between 2 sets  # 
+    #                                                                        # 
+    # np.setdiff1d(arr1, arr2)                                               # 
+    #   Set subtraction, return the elements in arr1 but not in arr2         #
+    # ---------------------------------------------------------------------- #
 
     good_index  = np.setdiff1d(query_index, camera_index, assume_unique=True)
     junk_index1 = np.argwhere(gl==-1)
@@ -61,7 +63,7 @@ def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
     CMC_tmp = compute_mAP(index, good_index, junk_index)
     return index, CMC_tmp
 
-
+# Deprecated 
 def compute_mAP(index, good_index, junk_index):
     ap = 0
     cmc = torch.IntTensor(len(index)).zero_()
@@ -91,68 +93,100 @@ def compute_mAP(index, good_index, junk_index):
 
     return ap, cmc
 
-######################################################################
+def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, candidate_film, gt, output):
+    cast_feature = cast_feature.cuda()
+    candidate_feature = candidate_feature.cuda()
+    
+    for i in range(cast_feature.shape[0]):
+        print("[{}/{}]".format(i, cast_feature.shape[0]))
+        
+        mask = torch.from_numpy((candidate_film == cast_film[i]).astype(np.uint8)).byte()
+        # print("select_film: ", cast_film[i])
+        # print(mask.dtype)
+        
+        # index, (ap_tmp, CMC_tmp) = evaluate(
+        #     cast_feature[i], cast_name[i], cast_film[i], 
+        #     candidate_feature[mask], candidate_name[mask], candidate_film[mask]
+        # )
+
+        index = evaluate(cast_feature[i], None, None, candidate_feature[mask], None, None)
+        names = candidate_name[index]
+        cast_id = cast_name[i]
+        
+        print("Index.shape: ", index.shape)
+        print("Candidates:  ", names.shape)
+        print("Cast_id:     ", cast_id)
+
+        result.append({
+            'Id': cast_id, 
+            'Rank': ' '.join(names)
+        })
+
+    with open(output, 'w') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+
+        writer.writeheader()
+        for r in result:
+            writer.writerow(r)
+
+    mAP = eval.eval(output, gt)
+
+    return mAP
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Evaluate_GPU')
     parser.add_argument('--features', type=str, help='directory of the features of cast and candidates.')
     parser.add_argument('--multi', action='store_true', help='if true, ranking multi-cast at the same time')
     parser.add_argument('--predict', action='store_true', help='if true, label is un-availables.')
-    parser.add_argument('--output', type=str)
+    parser.add_argument('--gt', type=str, help='directory of the gt.json')
+    parser.add_argument('--output', type=str, help='directory of the output.csv')
 
 
     opt = parser.parse_args()
 
     result = scipy.io.loadmat(opt.features)
-    
-    # print(result['cast_paths'].shape)
-    # print(result['cast_paths'])
 
     cast_feature = torch.FloatTensor(result['cast_features'])
     cast_name = result['cast_names'].reshape(-1)
     cast_film = result['cast_films'].reshape(-1)
     print(cast_name)
     print(cast_film)
+
     candidate_feature = torch.FloatTensor(result['candidate_features'])
     candidate_name = result['candidate_names'].reshape(-1)
     candidate_film = result['candidate_films'].reshape(-1)
     print(candidate_name)
     print(candidate_film)
 
+    result = []
+
     if not opt.multi:
         cast_feature = cast_feature.cuda()
         candidate_feature = candidate_feature.cuda()
-
-        print("cast_feature.shape: ", cast_feature.shape)
-        print("cast_film.shape:    ", cast_film.shape)
-        print("cast_name.shape:    ", cast_name.shape)
-        # print(cast_path)
-
-        CMC = torch.IntTensor(len(candidate_film)).zero_()
-        ap = 0.0
-
-        result = []
+        
         for i in range(cast_feature.shape[0]):
             print("[{}/{}]".format(i, cast_feature.shape[0]))
             
             mask = torch.from_numpy((candidate_film == cast_film[i]).astype(np.uint8)).byte()
             # print("select_film: ", cast_film[i])
-            # print("select_candidate.shape: ", candidate_film[mask].shape)
             # print(mask.dtype)
             
-            index, (ap_tmp, CMC_tmp) = evaluate(
-                cast_feature[i], cast_name[i], cast_film[i], 
-                candidate_feature[mask], candidate_name[mask], candidate_film[mask]
-            )
-            # print("Index.shape: ", index.shape)
-            # print(cast_path[i].tolist()[0].split('/')[-1].split('.')[0])
-            # print(type(candidate_path[index].tolist()))
-            names = candidate_name[index].tolist()
-            cast_id = os.path.basename(cast_name.tolist()[i]).split('.')
-            result.append({'Id': cast_id, 'Rank': ' '.join(names)})
+            # index, (ap_tmp, CMC_tmp) = evaluate(
+            #     cast_feature[i], cast_name[i], cast_film[i], 
+            #     candidate_feature[mask], candidate_name[mask], candidate_film[mask]
+            # )
 
-            if CMC_tmp[0] == -1 :continue
-            CMC = CMC + CMC_tmp
-            ap += ap_tmp
+            index = evaluate(cast_feature[i], None, None, candidate_feature[mask], None, None)
+            # print("Index.shape: ", index.shape)
+            
+            result.append({
+                'Id': cast_id, 
+                'Rank': ' '.join(names)
+            })
+
+            # if CMC_tmp[0] == -1 :continue
+            # CMC = CMC + CMC_tmp
+            # ap += ap_tmp
 
         with open('result.csv', 'w') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
@@ -161,14 +195,14 @@ if __name__ == "__main__":
             for r in result:
                 writer.writerow(r)
 
+        eval.eval('result.csv', '')
 
-        CMC = CMC.float()
-        CMC = CMC / cast_feature.shape[0] #average CMC
-        print('\nRank@1:%f\nRank@5:%f\nRank@10:%f\nmAP:%f'%(CMC[0], CMC[4], CMC[9], ap / len(cast_name)))
+        # CMC = CMC.float()
+        # CMC = CMC / cast_feature.shape[0] #average CMC
+        # print('\nRank@1:%f\nRank@5:%f\nRank@10:%f\nmAP:%f'%(CMC[0], CMC[4], CMC[9], ap / len(cast_name)))
 
     if opt.multi:
-        # Not tested.
-        raise NotImplementedError
+        raise NotImplementedError("Not test yet. ")
 
         # m_result = scipy.io.loadmat('./mat/multi_query_{}.mat'.format(opt.name))
         mquery_feature = torch.FloatTensor(m_result['mquery_f'])
