@@ -75,6 +75,8 @@ def eval(submission_file, gt_file):
     mAP = get_mAP(gt_dict, submission)
     print('mAP: {:.2%}'.format(mAP))
 
+    return mAP
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

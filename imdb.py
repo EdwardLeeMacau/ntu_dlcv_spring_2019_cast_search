@@ -36,16 +36,17 @@ from torch.utils.data import DataLoader, Dataset
 import utils
 
 class IMDbTrainset(Dataset):
-    def __init__(self, movie_path, feature_path, label_path, mode, transform=None, debug=False):
-        assert ((movie_path is not None) or (feature_path is not None)), "movie_path or feature_path is needed for IMDbDataset"
-        assert ((mode == 'classify') or (mode == 'features')), "The parameter 'mode' must be 'classify' or 'feature'"
+    def __init__(self, movie_path, feature_path, label_path, mode, keep_others=True, transform=None, debug=False):
+        assert (movie_path is not None), "movie_path is needed for IMDbDataset"
+        assert ((mode == 'classify') or (mode == 'features') or (mode == 'faces')), "The parameter 'mode' must be 'classify', 'feature' or 'faces'"
         
         self.movie_path   = movie_path
-        self.feature_path = feature_path
+        # self.feature_path = feature_path
         # self.label_path   = label_path
         self.root_path    = os.path.dirname(self.movie_path)
         
         self.mode = mode
+        self.keep_others = keep_others
         self.debug = debug
 
         self.transform = transform
@@ -60,16 +61,18 @@ class IMDbTrainset(Dataset):
         self.candidates = pd.concat(self.candidate_json, axis=0, keys=self.movies).reset_index()
         self.casts      = pd.concat(self.cast_json, axis=0, keys=self.movies).reset_index()
 
-        # add "others" label to self.
-        if self.mode == 'classify':
+        if not keep_others:
+            self.candidates = self.candidates[self.candidates[0] != "others"]
+         
+        if (self.mode == 'classify' or self.mode == 'faces') and (keep_others):
             num_casts = self.casts.shape[0]
             self.casts.loc[num_casts] = ['others', 'no_exist_others.jpg', 'others']
 
-        self.classes = list(self.casts['level_0'])
-
         if self.mode == 'features':
             self.images = pd.concat((self.candidates, self.casts), axis=0, ignore_index=True)
-        
+
+        self.classes = list(self.casts['level_0'])
+
         # print(self.candidates.columns)  # ['level_0', 'level_1', 0]
         # print('level_0 :\n', self.candidates[self.candidates[0] == 'others'])    # 15451 labels of imgs are "others"
 
@@ -88,18 +91,28 @@ class IMDbTrainset(Dataset):
         return self.casts.shape[0]
 
     def __len__(self):
-        if self.mode == 'classify':
+        if self.mode == 'classify' or self.mode == 'faces':
             return self.candidates.shape[0]
 
         if self.mode == 'features':
             return self.images.shape[0]
 
     def __getitem__(self, index):
-        # Get 1 image and label in mode 'classify'
+        # -------------------------------------------------
+        # Mode:
+        #   Classify: 
+        #     get 1 image and 1 label
+        #   Faces: get 1
+        #     get 1 image, label is 1 if it contains a face
+        #   Features:
+        #     get 1 image only.
+        # -------------------------------------------------
         if self.mode == 'classify':
             image_path, cast = self.candidates.iat[index, 1], self.candidates.iat[index, 2]
-        
-        # Get 1 image, directory, cast in mode 'features'
+
+        if self.mode == 'faces':
+            image_path, cast = self.candidates.iat[index, 1], self.candidates.iat[index, 2]
+
         if self.mode == 'features':
             image_path = self.images.iat[index, 1]
 
@@ -122,6 +135,12 @@ class IMDbTrainset(Dataset):
             if self.debug:
                 print("label_mapped : {} <--> {}".format(label_mapped, cast))
         
+        if self.mode == 'faces':
+            label_mapped = (cast != 'others')
+
+            if self.debug:
+                print("label_mapped : {} <--> {}".format(label_mapped, cast))
+            
         if self.mode == 'features':
             return image
 
@@ -158,14 +177,15 @@ def collate_fn(batch):
     
     return images, labels
 
-def dataloader_unittest(debug=False):
-    print("Classify setting: ")
+def dataloader_unittest(path, debug=False):
+    print("Classify setting (keep others): ")
     
     dataset = IMDbTrainset(
-        movie_path = "./IMDb/val",
+        movie_path = path,
         feature_path = None,
         label_path = "./IMDb/val_GT.json",
         mode = 'classify',
+        keep_others=True,
         debug = debug,
         transform = transforms.Compose([
         transforms.Resize((384,192), interpolation=3),
@@ -188,12 +208,41 @@ def dataloader_unittest(debug=False):
         #     print('dataloader unitest finished, has 198("others") in labels.')
         break
 
-    #################################################################################
+    # ------------------------------------------------------------------------------ #
 
+    print("Classify setting (remove others): ")
+
+    dataset = IMDbTrainset(
+        movie_path = path,
+        feature_path = None,
+        label_path = "./IMDb/val_GT.json",
+        mode = 'classify',
+        keep_others=False,
+        debug = debug,
+        transform = transforms.Compose([
+            transforms.Resize((384,192), interpolation=3),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ]))
+
+    dataloader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=0)
+
+    print("Length of dataset: {}".format(len(dataset)))
+
+    for index, (image, label) in enumerate(dataloader, 1):
+        print("Image.shape: {}".format(image.shape))
+        print("Label.shape: {}".format(label.shape))
+        # print("Label: {}".format(label))
+        print()
+
+        break
+
+    # ------------------------------------------------------------------------------ #
+                                                                                                                                                        
     print("Features setting: ")
 
     dataset = IMDbTrainset(
-        movie_path = "./IMDb/val",
+        movie_path = path,
         feature_path = None,
         label_path = "./IMDb/val_GT.json",
         mode = 'features',
@@ -219,6 +268,37 @@ def dataloader_unittest(debug=False):
         #     print('dataloader unitest finished, has 198("others") in labels.')
         break
 
+    # ------------------------------------------------------------------------------ #
+    print("Faces setting: ")
+
+    dataset = IMDbTrainset(
+        movie_path = path,
+        feature_path = None,
+        label_path = "./IMDb/val_GT.json",
+        mode = 'faces',
+        debug = debug,
+        transform = transforms.Compose([
+        transforms.Resize((384,192), interpolation=3),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ]))
+
+    dataloader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=0)
+
+    print("Length of dataset: {}".format(len(dataset)))
+
+    for index, (image, label) in enumerate(dataloader, 1):
+        print("Image.shape: {}".format(image.shape))
+        print("Label.shape: {}".format(label.shape))
+        print("Label: {}".format(label))
+        print()
+
+        # if "others" in label:
+        # if 198 in label:   # "others" mapped to 198
+        #     print('dataloader unitest finished, has 198("others") in labels.')
+        break
+
 
 if __name__ == "__main__":
-    dataloader_unittest()
+    path = "/media/disk1/EdwardLee/dataset/IMDb/val"
+    dataloader_unittest(path, True)

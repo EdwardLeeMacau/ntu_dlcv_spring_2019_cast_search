@@ -29,15 +29,15 @@
 from __future__ import division, print_function
 
 import argparse
-import math
+# import math
 import os
-#from PIL import Image
 import time
 from functools import reduce
 from shutil import copyfile
 
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 import scipy
 import torch
 import torch.backends.cudnn as cudnn
@@ -49,9 +49,11 @@ from torch.optim import lr_scheduler
 from torchvision import datasets, transforms
 
 import evaluate_rerank
+import evaluate_gpu
 import utils
 from imdb import IMDbTrainset
 from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
+from pcb_extractor import extract_feature
 from random_erasing import RandomErasing
 
 matplotlib.use('agg')
@@ -73,7 +75,8 @@ parser.add_argument('--stride', default=2, type=int, help='stride')
 parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
 parser.add_argument('--use_NAS', action='store_true', help='use NAS' )
 parser.add_argument('--PCB', action='store_true', help='use PCB+ResNet50' )
-parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
+parser.add_argument('--keep_others', action='store_true', help='if true, the image of type others will be keeped.')
+# parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
 parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
 parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
 # Training setting
@@ -160,7 +163,8 @@ image_datasets = {}
 image_datasets['train'] = IMDbTrainset(
     movie_path=opt.trainset, 
     feature_path=None, 
-    label_path=opt.trainset+"_GT.json", 
+    label_path=opt.trainset+"_GT.json",
+    keep_others=opt.keep_others,
     mode='classify',
     debug=opt.debug, 
     transform=data_transforms['train']
@@ -169,6 +173,7 @@ image_datasets['val'] = IMDbTrainset(
     movie_path=opt.valset, 
     feature_path=None, 
     label_path=opt.valset+"_GT.json",
+    keep_others=opt.keep_others,
     mode='features',
     debug=opt.debug, 
     transform=data_transforms['val']
@@ -186,8 +191,7 @@ dataloaders['train'] = torch.utils.data.DataLoader(
 )
 dataloaders['val'] = torch.utils.data.DataLoader(
     image_datasets['val'], 
-    batch_size=opt.batchsize, 
-    drop_last=True,
+    batch_size=opt.batchsize,
     shuffle=True, 
     num_workers=opt.threads, 
     pin_memory=True
@@ -213,28 +217,27 @@ use_gpu = torch.cuda.is_available()
 # In the following, parameter ``scheduler`` is an LR scheduler object from
 # ``torch.optim.lr_scheduler``.
 
-y_loss = {} # loss history
-y_loss['train'] = []
-y_loss['val'] = []
-y_err = {}
-y_err['train'] = []
-y_err['val'] = []
-y_mAP = {}
-y_mAP['val'] = []
-
+y = {
+    'train_loss': [],
+    'train_acc': [],
+    'val_mAP': []
+}
 
 def val(model, loader, epoch):    
     model.cpu()
 
     if opt.PCB:
-        test_model = PCB_test(model)
-    else:
-        raise NotImplementedError
+        test_model = PCB_test(model).cuda()
+    
+    if not opt.PCB:
+        raise NotImplementedError("Not PCB Structure is not done for val() yet.")
+        
         test_model = model
         test_model.classifier.classifier = nn.Sequential()
-    
-    test_model.cuda()
 
+    # -------------------------------- #
+    # Extract the features             #
+    # -------------------------------- #
     features = extract_feature(test_model, loader)
     num_candidates = loader.dataset.candidates.shape[0]    
     candidate_feature = features[:num_candidates]
@@ -242,220 +245,155 @@ def val(model, loader, epoch):
 
     print("Extracted_features.shape: {}".format(features.shape))
 
-    candidate_paths, candidate_films = loader.dataset.candidates['level_1'], loader.dataset.candidates['level_0']
-    cast_paths, cast_films = loader.dataset.casts['level_1'], loader.dataset.casts['level_0']
+    candidate_paths = loader.dataset.candidates['level_1']
+    candidate_films = loader.dataset.candidates['level_0']
+    cast_paths = loader.dataset.casts['level_1']
+    cast_films = loader.dataset.casts['level_0']
+
+    # -------------------------------- # 
+    # Save the features into .mat file # 
+    # -------------------------------- #
+    # candidate_feature = candidate_feature.numpy()
+    candidate_names   = np.asarray([os.path.basename(name).split('.')[0] for name in candidate_paths.tolist()])
+    candidate_films   = np.asarray([name for name in candidate_films.tolist()])
+    # cast_feature      = cast_feature.numpy()
+    cast_names        = np.asarray([os.path.basename(name).split('.')[0] for name in cast_paths.tolist()])
+    cast_films        = np.asarray([name for name in cast_films.tolist()])
 
     result = {
         'candidate_features': candidate_feature.numpy(), 
-        'candidate_paths': candidate_paths.to_numpy(),
-        'candidate_films': candidate_films.to_numpy(),
+        'candidate_names': candidate_names,
+        'candidate_films': candidate_films,
         'cast_features': cast_feature.numpy(), 
-        'cast_paths': cast_paths.to_numpy(),
-        'cast_films': cast_films.to_numpy(), 
+        'cast_names': cast_names,
+        'cast_films': cast_films, 
     }
+    print("Features saved to {}".format(os.path.join('model', opt.name, 'net_{}_result.mat'.format(str(epoch).zfill(3)))))
     scipy.io.savemat(os.path.join('model', opt.name, 'net_{}_result.mat'.format(str(epoch).zfill(3))), result)
+
+    model.cuda()
+
+    # -------------------------------- # 
+    # Calculate the mAP # 
+    # -------------------------------- #
+
+    # index = evaluate_gpu.run()
 
     # re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
     # print(re_rank)
+
+    mAP = evaluate_gpu.run(cast_feature, cast_names, cast_films, candidate_feature, candidate_names, candidate_films, opt.valset + "_GT.json", "result.csv")
     
-    model.cuda()
-    # os.system('python evaluate_rerank.py | tee -a {}'.format(result))
+    return mAP
 
-    return
-
-def extract_feature(model, loader):
-    """
-      Use Pretrain network to extract the features.
-
-      Params:
-      - model: The CNN feature extarctor
-      - loader:
-
-      Return:
-      - features
-    """
-    features = torch.FloatTensor()
-    
-    for index, (img) in enumerate(loader, 1):
-        n = img.size()[0]
-        
-        print('[{:5s}] [Iteration {:4d}/{:4d}]'.format('val', index, len(loader)))
- 
-        if not opt.PCB:
-            ff = torch.FloatTensor(n, 512).zero_().cuda()
-        if opt.PCB:
-            ff = torch.FloatTensor(n, 2048, opt.num_part).zero_().cuda() # we have six parts
-
-        # Run the images with normal, horizontal flip
-        for i in range(2):
-            if i == 1:
-                img = utils.fliplr(img)
-            
-            input_img = img.cuda()
-            for scale in ms:
-                if scale != 1:
-                    # bicubic is only available in pytorch >= 1.1
-                    input_img = nn.functional.interpolate(input_img, scale_factor=scale, mode='bicubic', align_corners=False)
-                outputs = model(input_img) 
-                ff += outputs
-        
-        # -----------------------------------------------------------------------------------
-        # norm feature
-        # feature size (n, 2048, 6)
-        # 1. To treat every part equally, I calculate the norm for every 2048-dim part feature.
-        # 2. To keep the cosine score==1, sqrt(6) is added to norm the whole feature (2048*6).
-        # ------------------------------------------------------------------------------------    
-        if opt.PCB:
-            fnorm = torch.norm(ff, p=2, dim=1, keepdim=True) * np.sqrt(6) 
-            ff = ff.div(fnorm.expand_as(ff))
-            ff = ff.view(ff.size(0), -1)
-        else:
-            fnorm = torch.norm(ff, p=2, dim=1, keepdim=True)
-            ff = ff.div(fnorm.expand_as(ff))
-
-        # FF.shape = (n, 2048 * num_part)
-        # print("FF.shape: {}".format(ff.shape))
-
-        # Features = (images, 2048 * num_part)
-        features = torch.cat((features, ff.data.cpu()), 0)
-        # print("Features.shape: {}".format(features.shape))
-    
-    return features
-
-def train_model(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, debug=False):
-    since = time.time()
-
-    best_model_wts = model.state_dict()
-    best_acc = 0.0
-    best_mAP = 0.0
-
+def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, debug=False):
     # Warm starting training technique.
-    warm_up = 0.1 # We start from the 0.1*lrRate
+    warm_up = 0.1 # We start from the 0.1 * lrRate
     warm_iteration = round(len(dataloaders['train'].dataset) / opt.batchsize) * opt.warm_epoch # first 5 epoch
 
     if debug:
         model.debug_mode()
         
-    for epoch in range(1, num_epochs + 1):
-        scheduler.step()
-        model.train()
+    # for epoch in range(1, num_epochs + 1):
+
+    scheduler.step()
+    model.train()
+    
+    running_loss = 0.0
+    running_corrects = 0.0
+
+    # Iterate over data.
+    for index, (inputs, labels) in enumerate(dataloaders['train'], 1):
+        n = inputs.shape[0]
+        optimizer.zero_grad()                
+
+        if use_gpu:
+            inputs, labels = inputs.cuda(), labels.cuda()
         
-        running_loss = 0.0
-        running_corrects = 0.0
-    
-        # Iterate over data.
-        for index, (inputs, labels) in enumerate(dataloaders['train'], 1):
-            n, c, h, w = inputs.shape
-            optimizer.zero_grad()                
+        # print("Inputs.shape: ", inputs.shape)
+        # print("Labels.shape: ", labels.shape)
 
-            # inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
-            if use_gpu:
-                inputs = inputs.cuda()
-                labels = labels.cuda()
-            # print(inputs.shape)
-            # print(labels.shape)
+        outputs = model(inputs)
 
-            outputs = model(inputs)
-
-            if not opt.PCB:
-                _, preds = torch.max(outputs.data, 1)
-                loss = criterion(outputs, labels)
-            
-            if opt.PCB:
-                part = {}
-                sm = nn.Softmax(dim=1)
-                for i in range(opt.num_part):
-                    part[i] = outputs[i]
-
-                # score = reduce((lambda x, y: x + y), [F.softmax(tensor, dim=1) for tensor in part.values()])
-                score = sm(part[0]) + sm(part[1]) +sm(part[2]) + sm(part[3]) + sm(part[4]) + sm(part[5])
-                _, preds = torch.max(score.data, 1)
-
-                if debug:
-                    print("part[0] : ", part[0])
-                    print("labels : ", labels , '\n')
-
-                loss = criterion(part[0], labels)
-                for i in range(opt.num_part - 1):
-                    loss += criterion(part[i+1], labels)
-
-            # backward + optimize only if in training phase
-            if epoch < opt.warm_epoch: 
-                warm_up = min(1.0, warm_up + 0.9 / warm_iteration)
-                loss *= warm_up
-
-            loss.backward()
-            optimizer.step()
-
-            # statistics
-            running_loss += loss.item() * n
-            running_corrects += float(torch.sum(preds == labels.data))
-            
-            if index % opt.log_interval == 0:
-                print('[{:5s}] [Epoch {:2d}/{:2d}] [Iteration {:4d}/{:4d}] [Loss: {:.4f}] [Acc: {:.2%}]'.format('train', epoch, num_epochs, index, len(dataloaders['train']), running_loss / index / opt.batchsize, running_corrects / index / opt.batchsize))
-            
-        epoch_loss = running_loss / len(image_datasets['train'])
-        epoch_acc  = running_corrects / len(image_datasets['train'])
-
-        y_loss['train'].append(epoch_loss)
-        y_err['train'].append(1.0 - epoch_acc)            
-
-        # deep copy the model
-        if epoch % save_freq == 0:
-            save_network(model, epoch)
-
-        # best_model_wts = model.state_dict()
-        # best_mAP = mAP
-
-        draw_curve(epoch)
-
-        time_elapsed = time.time() - since
-        print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+        if not opt.PCB:
+            _, preds = torch.max(outputs.data, 1)
+            loss = criterion(outputs, labels)
         
-        val(model, dataloaders['val'], epoch)
+        if opt.PCB:
+            part = {}
+            sm = nn.Softmax(dim=1)
 
-    # ------------------------
-    # All training epochs ends
-    # ------------------------
-    time_elapsed = time.time() - since
-    print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+            for i in range(opt.num_part):
+                part[i] = outputs[i]
+
+            # score = reduce((lambda x, y: x + y), [F.softmax(tensor, dim=1) for tensor in part.values()])
+            score = sm(part[0]) + sm(part[1]) + sm(part[2]) + sm(part[3]) + sm(part[4]) + sm(part[5])
+            _, preds = torch.max(score.data, 1)
+
+            if debug:
+                print("part[0] : ", part[0])
+                print("labels : ", labels , '\n')
+
+            loss = criterion(part[0], labels)
+            for i in range(opt.num_part - 1):
+                loss += criterion(part[i+1], labels)
+
+            # print('Labels: ', labels)
+            # print('Preds: ', preds)
+
+        # backward + optimize only if in training phase
+        if epoch < opt.warm_epoch: 
+            warm_up = min(1.0, warm_up + 0.9 / warm_iteration)
+            loss *= warm_up
+
+        loss.backward()
+        optimizer.step()
+
+        # statistics
+        running_loss += loss.item() * n
+        running_corrects += float(torch.sum(preds == labels.data))
+        
+        # Temporal training informations
+        corrects = torch.mean((preds == labels.data).type(torch.float))
+        if index % opt.log_interval == 0:
+            print('[Train] [Epoch {:2d}/{:2d}] [Iteration {:4d}/{:4d}] [Loss: {:.4f}] [Running Acc: {:.2%}]'.format(
+                epoch, num_epochs, index, len(dataloaders['train']), loss.item(), running_corrects / n / index))
+        
+    epoch_loss = running_loss / len(image_datasets['train'])
+    epoch_acc  = running_corrects / len(image_datasets['train'])
+
+    y['train_loss'].append(epoch_loss)
+    y['train_acc'].append(epoch_acc)
     
-    # load best model weights
-    model.load_state_dict(best_model_wts)
-    save_network(model, 'best')
-    
-    return model
+    return model, epoch_loss, epoch_acc
 
 
 ######################################################################
 # Draw Curve
 #---------------------------
 x_epoch = []
-plt.figure(figsize=(12.8, 7.2))
-# ax0 = fig.add_subplot(121, title="loss")
-# ax1 = fig.add_subplot(122, title="error")
+plt.figure(figsize=(19.2, 10.8))
 
-def draw_curve(current_epoch, save_jpg='train.jpg'):
+def draw_curve(x, y, save_jpg='train.jpg'):
     plt.clf()
 
-    x_epoch.append(current_epoch)
-    plt.plot(x_epoch, y_loss['train'], 'bo-', label='Train Loss')
-    plt.plot(x_epoch, y_loss['val'], 'ro-', label='Validation Loss')
-    # ax1.plot(x_epoch, y_err['train'], 'bo-', label='train')
-    # ax1.plot(x_epoch, y_err['val'], 'ro-', label='val')
+    # Plot loss curves
+    plt.subplot(1, 2, 1)
+    plt.plot(x, y['train_loss'], 'bo-', label='Train Loss')
+    plt.legend(loc=0)
 
-    if current_epoch == 0:
-        # ax0.legend()
-        # ax1.legend()
-        plt.legend(loc=0)
+    # Plot accuracy curves
+    plt.subplot(1, 2, 2)
+    plt.plot(x, y['train_acc'], 'go-', label='Train Acc')
+    plt.plot(x, y['val_mAP'], 'ro-', label='Validation mAP')
+    plt.legend(loc=0)
 
     plt.savefig(os.path.join('./model', opt.name, save_jpg))
 
 ######################################################################
 # Save model
 #---------------------------
-def save_network(network, epoch):
-    num_fill = 3
+def save_network(network, epoch, num_fill=3):
     save_path = os.path.join('./model', opt.name, 'net_{}.pth'.format(str(epoch).zfill(num_fill)))
     torch.save(network.cpu().state_dict(), save_path)
 
@@ -464,9 +402,9 @@ def save_network(network, epoch):
 
     return
 
-######################################################################
-# Finetuning the convnet
-# ----------------------
+# ------------------------------ # 
+# Finetuning the convolution-net #
+# ------------------------------ #
 #
 # Load a pretrainied model and reset final fully connected layer.
 #
@@ -495,7 +433,8 @@ if not opt.PCB:
              {'params': base_params, 'lr': 0.1*opt.lr},
              {'params': model.classifier.parameters(), 'lr': opt.lr}
          ], weight_decay=5e-4, momentum=0.9, nesterov=True)
-else:
+
+if opt.PCB:
     ignored_params = list(map(id, model.model.fc.parameters() ))
     ignored_params += (list(map(id, model.classifier0.parameters() )) 
                      +list(map(id, model.classifier1.parameters() ))
@@ -503,8 +442,6 @@ else:
                      +list(map(id, model.classifier3.parameters() ))
                      +list(map(id, model.classifier4.parameters() ))
                      +list(map(id, model.classifier5.parameters() ))
-                     #+list(map(id, model.classifier6.parameters() ))
-                     #+list(map(id, model.classifier7.parameters() ))
                       )
     base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
     
@@ -518,8 +455,6 @@ else:
                 {'params': model.classifier3.parameters(), 'lr': opt.lr},
                 {'params': model.classifier4.parameters(), 'lr': opt.lr},
                 {'params': model.classifier5.parameters(), 'lr': opt.lr},
-                #{'params': model.classifier6.parameters(), 'lr': 0.01},
-                #{'params': model.classifier7.parameters(), 'lr': 0.01}
             ], weight_decay=opt.weight_decay, momentum=opt.momentum, nesterov=True)
 
     elif opt.optimizer == 'Adam':
@@ -532,8 +467,6 @@ else:
                 {'params': model.classifier3.parameters(), 'lr': opt.lr},
                 {'params': model.classifier4.parameters(), 'lr': opt.lr},
                 {'params': model.classifier5.parameters(), 'lr': opt.lr},
-                #{'params': model.classifier6.parameters(), 'lr': 0.01},
-                #{'params': model.classifier7.parameters(), 'lr': 0.01}
             ], weight_decay=opt.weight_decay, betas=(opt.b1, opt.b2))
 
 
@@ -559,17 +492,59 @@ if __name__ == "__main__":
     # print opts
     utils.details(opt)
 
-    # model = model.to(DEVICE)
+    # ---------------- # 
+    # training setting # 
+    # ---------------- # 
     model = model.cuda()
-    # if fp16:
-    #     model = network_to_half(model)
-    #     optimizer_ft = FP16_Optimizer(optimizer_ft, static_loss_scale = 128.0)
-    #     model, optimizer_ft = amp.initialize(model, optimizer_ft, opt_level = "O1")
 
     criterion = nn.CrossEntropyLoss()
-    # Decay LR by a factor of 0.1 every 40 epochs
-    # exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=40, gamma=0.1)
     scheduler = lr_scheduler.MultiStepLR(optimizer_ft, milestones=opt.milestones, gamma=opt.gamma)
-    
-    model = train_model(model, criterion, optimizer_ft, scheduler, 
+
+    since = time.time()
+
+    # ------------------ # 
+    # Train & Validation # 
+    # ------------------ # 
+    # best_model_wts = model.state_dict()
+    # best_acc = 0.0
+    # best_mAP = 0.0
+
+    # with torch.no_grad():
+    #     val_mAP = val(model, dataloaders['val'], 0)
+    #     y['train_loss'].append(0)
+    #     y['train_acc'].append(0)
+    #     y['val_mAP'].append(val_mAP)
+    #     x_epoch.append(0)
+    #     draw_curve(x_epoch, y)
+
+    for epoch in range(1, opt.epochs + 1):
+        # Train
+        model, epoch_loss, epoch_acc = train(model, criterion, optimizer_ft, scheduler, 
                 num_epochs=opt.epochs, save_freq=opt.save_interval, debug=opt.debug)
+
+        # Save
+        if epoch % opt.save_interval == 0:
+            save_network(model, epoch)
+
+        # Validation
+        with torch.no_grad():
+            val_mAP = val(model, dataloaders['val'], epoch)
+        
+        y['val_mAP'].append(val_mAP)
+
+        # best_model_wts = model.state_dict()
+        # best_mAP = mAP
+        
+        # Draw curves
+        x_epoch.append(epoch)
+        draw_curve(x_epoch, y)
+        
+        # Print times
+        time_elapsed = time.time() - since
+        print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+        
+    # ------------------ # 
+    # End                # 
+    # ------------------ # 
+    time_elapsed = time.time() - since
+    print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))

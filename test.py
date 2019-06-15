@@ -55,12 +55,14 @@ parser.add_argument('--resume', type=str, help='Directory to the checkpoint')
 parser.add_argument('--testset', default='./IMDb/val', type=str, help='Directory of the validation set')
 parser.add_argument('--batchsize', default=128, type=int, help='batchsize')
 parser.add_argument('--features', type=str, help='Directory of the features.mat')
+parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
 # I/O Setting
 # parser.add_argument('--output', default='./output', type=str, help='Directory of the output path')
 parser.add_argument('--name', default='ft_ResNet50', type=str, help='save model path')
 # Model Setting
 parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
-parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
+parser.add_argument('--use_dense', action='store_true', help='use densenet121')
+parser.add_argument('--use_NAS', action='store_true', help='use NAS')
 parser.add_argument('--PCB', action='store_true', help='use PCB' )
 # parser.add_argument('--multi', action='store_true', help='use multiple query' )
 parser.add_argument('--ms', default=[1.0], nargs='*', type=float, help="multiple_scale: e.g. '1' '1 1.1'  '1 1.1 1.2'")
@@ -80,16 +82,18 @@ if not opt.features:
         config = yaml.load(stream)
 
     opt.name = config['name']
-    opt.PCB = config['PCB']
+    opt.PCB       = config['PCB']
     opt.use_dense = config['use_dense']
-    opt.use_NAS = config['use_NAS']
-    opt.stride = config['stride']
+    opt.use_NAS   = config['use_NAS']
+    opt.stride    = config['stride']
+    opt.img_size  = config['img_size']
 
     if 'nclasses' in config: # tp compatible with old config files
         opt.nclasses = config['nclasses']
     else: 
         opt.nclasses = 199 # Including "others"
 
+opt.img_size = tuple(opt.img_size)
 opt.gpu_ids = list(filter(lambda x: x >= 0, opt.gpu_ids))
 ms = [math.sqrt(float(s)) for s in opt.ms]
 
@@ -99,21 +103,14 @@ if len(opt.gpu_ids) > 0:
     cudnn.benchmark = True
 
 # set gpu / cpu
-device = utils.selectDevice()
 use_gpu = torch.cuda.is_available()
 
 # ------------------------------------
 # Load Data
-# ---------
-#
-# Tranforms functin description:
-#   TenCrop(224):
-#   Lambda():
 # ------------------------------------
-
 if not opt.PCB:
     data_transforms = transforms.Compose([
-            transforms.Resize((256,128), interpolation=3),
+            transforms.Resize(opt.img_size, interpolation=3),
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             #transforms.TenCrop(224),
@@ -129,7 +126,7 @@ if not opt.PCB:
 
 if opt.PCB:
     data_transforms = transforms.Compose([
-        transforms.Resize((384,192), interpolation=3),
+        transforms.Resize(opt.img_size, interpolation=3),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]) 
     ])
@@ -147,8 +144,6 @@ dataloaders = torch.utils.data.DataLoader(
     shuffle=False,
     num_workers=8
 )
-
-# class_names = image_datasets['query'].classes
 
 # --------------------------------------
 # Extract feature
@@ -194,7 +189,10 @@ def extract_feature(model, loader):
         
         # -----------------------------------------------------------------------------------
         # norm feature
-        # feature size (n, 2048, 6)
+        # if opt.PCB:
+        #   feature size (n, 2048 x num_part)
+        # if not opt.PCB:
+        #   feature size (n, 512)
         # 1. To treat every part equally, I calculate the norm for every 2048-dim part feature.
         # 2. To keep the cosine score==1, sqrt(6) is added to norm the whole feature (2048*6).
         # ------------------------------------------------------------------------------------    
@@ -215,41 +213,16 @@ def extract_feature(model, loader):
     
     return features
 
-# (Deprecated 20190614)
-def get_id(img_path):
-    """
-      Get the image information: (camera_id, labels)
-
-      Params:
-      - img_path
-
-      Return:
-      - camera_id
-      - labels
-    """
-    camera_id = []
-    labels = []
-    
-    for path, v in img_path:
-        filename = os.path.basename(path)
-        label = filename[0:4]
-        camera = filename.split('c')[1]
-        if label[0:2] == '-1':
-            labels.append(-1)
-        else:
-            labels.append(int(label))
-        camera_id.append(int(camera[0]))
-    
-    return camera_id, labels
-
 def main():
     if not opt.features:
         # ---------------------------------------------------------------------
         # We need to transfrm all candidates images and cast images to features
         # And query the cast inside the same films
         # ---------------------------------------------------------------------
-        candidate_paths, candidate_films = image_datasets.candidates['level_1'], image_datasets.candidates['level_0']
-        cast_paths, cast_films = image_datasets.casts['level_1'], image_datasets.casts['level_0']
+        candidate_paths = image_datasets.candidates['level_1']
+        candidate_films = image_datasets.candidates['level_0']
+        cast_paths = image_datasets.casts['level_1']
+        cast_films = image_datasets.casts['level_0']
 
         # -----------------------------------
         # Load datas and trained model
@@ -287,7 +260,7 @@ def main():
             num_candidates = dataloaders.dataset.candidates.shape[0]
             
             candidate_feature = features[:num_candidates]
-            cast_feature = features[num_candidates:]
+            cast_feature      = features[num_candidates:]
 
         candidate_feature = candidate_feature.numpy()
         candidate_names   = np.asarray([os.path.basename(name).split('.')[0] for name in candidate_paths.tolist()])
@@ -306,19 +279,19 @@ def main():
             'cast_films': cast_films, 
         }
 
-        print("Features saved to {}".format(os.path.join(os.path.dirname(opt.resume), os.path.basename(opt.resume).split('.')[0] + '_result.mat')))
-        # scipy.io.savemat('result.mat', result)
-        scipy.io.savemat(os.path.join(os.path.dirname(opt.resume), os.path.basename(opt.resume).split('.')[0] + '_result.mat'), result)
+        mat_path = os.path.join(os.path.dirname(opt.resume), os.path.basename(opt.resume).split('.')[0] + '_result.mat')
+        print("Features saved to {}".format(mat_path))
+        scipy.io.savemat(mat_path, result)
 
     if opt.features:
         result = scipy.io.loadmat(opt.features)
 
         cast_feature = result['cast_features']
-        cast_paths = result['cast_paths']
-        cast_films = result['cast_films']
+        cast_names   = result['cast_names']
+        cast_films   = result['cast_films']
         candidate_feature = result['candidate_features']
-        candidate_paths = result['candidate_paths']
-        candidate_films = result['candidate_films']
+        candidate_names   = result['candidate_names']
+        candidate_films   = result['candidate_films']
 
     print("Cast_feature.shape {}".format(cast_feature.shape))
     print("Cast_film.shape:   {}".format(cast_films.shape))
