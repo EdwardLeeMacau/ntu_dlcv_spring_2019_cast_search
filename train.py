@@ -446,11 +446,11 @@ if not opt.PCB:
 if opt.PCB:
     ignored_params = list(map(id, model.model.fc.parameters() ))
     ignored_params += (list(map(id, model.classifier0.parameters() )) 
-                     +list(map(id, model.classifier1.parameters() ))
-                     +list(map(id, model.classifier2.parameters() ))
-                     +list(map(id, model.classifier3.parameters() ))
-                     +list(map(id, model.classifier4.parameters() ))
-                     +list(map(id, model.classifier5.parameters() ))
+                    #  +list(map(id, model.classifier1.parameters() ))
+                    #  +list(map(id, model.classifier2.parameters() ))
+                    #  +list(map(id, model.classifier3.parameters() ))
+                    #  +list(map(id, model.classifier4.parameters() ))
+                    #  +list(map(id, model.classifier5.parameters() ))
                       )
     base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
     
@@ -459,11 +459,11 @@ if opt.PCB:
                 {'params': base_params, 'lr': 0.1 * opt.lr},
                 {'params': model.model.fc.parameters(), 'lr': opt.lr},
                 {'params': model.classifier0.parameters(), 'lr': opt.lr},
-                {'params': model.classifier1.parameters(), 'lr': opt.lr},
-                {'params': model.classifier2.parameters(), 'lr': opt.lr},
-                {'params': model.classifier3.parameters(), 'lr': opt.lr},
-                {'params': model.classifier4.parameters(), 'lr': opt.lr},
-                {'params': model.classifier5.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier1.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier2.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier3.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier4.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier5.parameters(), 'lr': opt.lr},
             ], weight_decay=opt.weight_decay, momentum=opt.momentum, nesterov=True)
 
     elif opt.optimizer == 'Adam':
@@ -471,11 +471,11 @@ if opt.PCB:
                 {'params': base_params, 'lr': 0.1 * opt.lr},
                 {'params': model.model.fc.parameters(), 'lr': opt.lr},
                 {'params': model.classifier0.parameters(), 'lr': opt.lr},
-                {'params': model.classifier1.parameters(), 'lr': opt.lr},
-                {'params': model.classifier2.parameters(), 'lr': opt.lr},
-                {'params': model.classifier3.parameters(), 'lr': opt.lr},
-                {'params': model.classifier4.parameters(), 'lr': opt.lr},
-                {'params': model.classifier5.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier1.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier2.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier3.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier4.parameters(), 'lr': opt.lr},
+                # {'params': model.classifier5.parameters(), 'lr': opt.lr},
             ], weight_decay=opt.weight_decay, betas=(opt.b1, opt.b2))
 
 
