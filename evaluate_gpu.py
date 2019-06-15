@@ -9,6 +9,7 @@
 """
 import csv
 import os
+from tqdm import tqdm
 import argparse
 
 import numpy as np
@@ -39,9 +40,9 @@ def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
     if (ql is None) or (qc is None) or (gl is None) or (gc is None):
         return index
 
-    # ----------------------------------
-    # Calculating the mAP and CMC here
-    # ----------------------------------
+    # -------------------------------- #
+    # Calculating the mAP and CMC here #
+    # -------------------------------- #
     # good index
     query_index  = np.argwhere(gl==ql)
     camera_index = np.argwhere(gc==qc)
@@ -94,28 +95,32 @@ def compute_mAP(index, good_index, junk_index):
     return ap, cmc
 
 def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, candidate_film, gt, output):
-    cast_feature = cast_feature.cuda()
-    candidate_feature = candidate_feature.cuda()
+    """
+      Run the mAP validation process.
+
+      Params:
+
+      Return:
+      - mAP
+    """
+    cast_feature, candidate_feature = cast_feature.cuda(), candidate_feature.cuda()
     
-    for i in range(cast_feature.shape[0]):
-        print("[{}/{}]".format(i, cast_feature.shape[0]))
-        
-        mask = torch.from_numpy((candidate_film == cast_film[i]).astype(np.uint8)).byte()
+    result = []
+    for i in tqdm(range(cast_feature.shape[0])):
+        mask_tensor = torch.from_numpy((candidate_film == cast_film[i]).astype(np.uint8)).byte()
+        mask_numpy  = mask_tensor.numpy().astype(bool)
         # print("select_film: ", cast_film[i])
         # print(mask.dtype)
-        
-        # index, (ap_tmp, CMC_tmp) = evaluate(
-        #     cast_feature[i], cast_name[i], cast_film[i], 
-        #     candidate_feature[mask], candidate_name[mask], candidate_film[mask]
-        # )
+        print(candidate_feature[mask_tensor].shape)
+        print(candidate_name[mask_numpy].shape)
 
-        index = evaluate(cast_feature[i], None, None, candidate_feature[mask], None, None)
-        names = candidate_name[index]
+        index = evaluate(cast_feature[i], None, None, candidate_feature[mask_tensor], None, None)
+        names = candidate_name[mask_numpy][index]
         cast_id = cast_name[i]
         
-        print("Index.shape: ", index.shape)
-        print("Candidates:  ", names.shape)
-        print("Cast_id:     ", cast_id)
+        # print("Index.shape: ", index.shape)
+        # print("Candidates:  ", names.shape)
+        # print("Cast_id:     ", cast_id)
 
         result.append({
             'Id': cast_id, 
@@ -141,65 +146,34 @@ if __name__ == "__main__":
     parser.add_argument('--gt', type=str, help='directory of the gt.json')
     parser.add_argument('--output', type=str, help='directory of the output.csv')
 
-
     opt = parser.parse_args()
 
+    # Load the features
     result = scipy.io.loadmat(opt.features)
 
     cast_feature = torch.FloatTensor(result['cast_features'])
     cast_name = result['cast_names'].reshape(-1)
     cast_film = result['cast_films'].reshape(-1)
-    print(cast_name)
-    print(cast_film)
+    # print(cast_name)
+    # print(cast_film)
 
     candidate_feature = torch.FloatTensor(result['candidate_features'])
     candidate_name = result['candidate_names'].reshape(-1)
     candidate_film = result['candidate_films'].reshape(-1)
-    print(candidate_name)
-    print(candidate_film)
+    # print(candidate_name)
+    # print(candidate_film)
 
-    result = []
+    print(cast_feature.shape)
+    print(cast_name.shape)
+    print(cast_film.shape)
+
+    print(candidate_feature.shape)
+    print(candidate_name.shape)
+    print(candidate_film.shape)
 
     if not opt.multi:
-        cast_feature = cast_feature.cuda()
-        candidate_feature = candidate_feature.cuda()
-        
-        for i in range(cast_feature.shape[0]):
-            print("[{}/{}]".format(i, cast_feature.shape[0]))
-            
-            mask = torch.from_numpy((candidate_film == cast_film[i]).astype(np.uint8)).byte()
-            # print("select_film: ", cast_film[i])
-            # print(mask.dtype)
-            
-            # index, (ap_tmp, CMC_tmp) = evaluate(
-            #     cast_feature[i], cast_name[i], cast_film[i], 
-            #     candidate_feature[mask], candidate_name[mask], candidate_film[mask]
-            # )
-
-            index = evaluate(cast_feature[i], None, None, candidate_feature[mask], None, None)
-            # print("Index.shape: ", index.shape)
-            
-            result.append({
-                'Id': cast_id, 
-                'Rank': ' '.join(names)
-            })
-
-            # if CMC_tmp[0] == -1 :continue
-            # CMC = CMC + CMC_tmp
-            # ap += ap_tmp
-
-        with open('result.csv', 'w') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
-
-            writer.writeheader()
-            for r in result:
-                writer.writerow(r)
-
-        eval.eval('result.csv', '')
-
-        # CMC = CMC.float()
-        # CMC = CMC / cast_feature.shape[0] #average CMC
-        # print('\nRank@1:%f\nRank@5:%f\nRank@10:%f\nmAP:%f'%(CMC[0], CMC[4], CMC[9], ap / len(cast_name)))
+        mAP = run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, candidate_film, opt.gt, opt.output)
+        print("mAP: {:2%}".format(mAP))
 
     if opt.multi:
         raise NotImplementedError("Not test yet. ")

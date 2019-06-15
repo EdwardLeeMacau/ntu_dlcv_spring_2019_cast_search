@@ -36,16 +36,17 @@ from torch.utils.data import DataLoader, Dataset
 import utils
 
 class IMDbTrainset(Dataset):
-    def __init__(self, movie_path, feature_path, label_path, mode, transform=None, debug=False):
-        assert ((movie_path is not None) or (feature_path is not None)), "movie_path or feature_path is needed for IMDbDataset"
-        assert ((mode == 'classify') or (mode == 'features') or mode == 'faces'), "The parameter 'mode' must be 'classify', 'feature' or 'faces'"
+    def __init__(self, movie_path, feature_path, label_path, mode, keep_others=True, transform=None, debug=False):
+        assert (movie_path is not None), "movie_path is needed for IMDbDataset"
+        assert ((mode == 'classify') or (mode == 'features') or (mode == 'faces')), "The parameter 'mode' must be 'classify', 'feature' or 'faces'"
         
         self.movie_path   = movie_path
-        self.feature_path = feature_path
+        # self.feature_path = feature_path
         # self.label_path   = label_path
         self.root_path    = os.path.dirname(self.movie_path)
         
         self.mode = mode
+        self.keep_others = keep_others
         self.debug = debug
 
         self.transform = transform
@@ -60,8 +61,10 @@ class IMDbTrainset(Dataset):
         self.candidates = pd.concat(self.candidate_json, axis=0, keys=self.movies).reset_index()
         self.casts      = pd.concat(self.cast_json, axis=0, keys=self.movies).reset_index()
 
-        # add "others" label to self.
-        if self.mode == 'classify' or self.mode == 'faces':
+        if not keep_others:
+            self.candidates = self.candidates[self.candidates[0] != "others"]
+         
+        if (self.mode == 'classify' or self.mode == 'faces') and (keep_others):
             num_casts = self.casts.shape[0]
             self.casts.loc[num_casts] = ['others', 'no_exist_others.jpg', 'others']
 
@@ -174,14 +177,15 @@ def collate_fn(batch):
     
     return images, labels
 
-def dataloader_unittest(debug=False):
-    print("Classify setting: ")
+def dataloader_unittest(path, debug=False):
+    print("Classify setting (keep others): ")
     
     dataset = IMDbTrainset(
-        movie_path = "./IMDb/val",
+        movie_path = path,
         feature_path = None,
         label_path = "./IMDb/val_GT.json",
         mode = 'classify',
+        keep_others=True,
         debug = debug,
         transform = transforms.Compose([
         transforms.Resize((384,192), interpolation=3),
@@ -206,10 +210,39 @@ def dataloader_unittest(debug=False):
 
     # ------------------------------------------------------------------------------ #
 
+    print("Classify setting (remove others): ")
+
+    dataset = IMDbTrainset(
+        movie_path = path,
+        feature_path = None,
+        label_path = "./IMDb/val_GT.json",
+        mode = 'classify',
+        keep_others=False,
+        debug = debug,
+        transform = transforms.Compose([
+            transforms.Resize((384,192), interpolation=3),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ]))
+
+    dataloader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=0)
+
+    print("Length of dataset: {}".format(len(dataset)))
+
+    for index, (image, label) in enumerate(dataloader, 1):
+        print("Image.shape: {}".format(image.shape))
+        print("Label.shape: {}".format(label.shape))
+        # print("Label: {}".format(label))
+        print()
+
+        break
+
+    # ------------------------------------------------------------------------------ #
+                                                                                                                                                        
     print("Features setting: ")
 
     dataset = IMDbTrainset(
-        movie_path = "./IMDb/val",
+        movie_path = path,
         feature_path = None,
         label_path = "./IMDb/val_GT.json",
         mode = 'features',
@@ -239,7 +272,7 @@ def dataloader_unittest(debug=False):
     print("Faces setting: ")
 
     dataset = IMDbTrainset(
-        movie_path = "./IMDb/val",
+        movie_path = path,
         feature_path = None,
         label_path = "./IMDb/val_GT.json",
         mode = 'faces',
@@ -267,4 +300,5 @@ def dataloader_unittest(debug=False):
 
 
 if __name__ == "__main__":
-    dataloader_unittest(True)
+    path = "/media/disk1/EdwardLee/dataset/IMDb/val"
+    dataloader_unittest(path, True)

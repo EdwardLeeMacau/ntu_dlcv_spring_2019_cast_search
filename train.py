@@ -49,6 +49,7 @@ from torch.optim import lr_scheduler
 from torchvision import datasets, transforms
 
 import evaluate_rerank
+import evaluate_gpu
 import utils
 from imdb import IMDbTrainset
 from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
@@ -74,6 +75,7 @@ parser.add_argument('--stride', default=2, type=int, help='stride')
 parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
 parser.add_argument('--use_NAS', action='store_true', help='use NAS' )
 parser.add_argument('--PCB', action='store_true', help='use PCB+ResNet50' )
+parser.add_argument('--keep_others', action='store_true', help='if true, the image of type others will be keeped.')
 # parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
 parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
 parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
@@ -161,7 +163,8 @@ image_datasets = {}
 image_datasets['train'] = IMDbTrainset(
     movie_path=opt.trainset, 
     feature_path=None, 
-    label_path=opt.trainset+"_GT.json", 
+    label_path=opt.trainset+"_GT.json",
+    keep_others=opt.keep_others,
     mode='classify',
     debug=opt.debug, 
     transform=data_transforms['train']
@@ -170,6 +173,7 @@ image_datasets['val'] = IMDbTrainset(
     movie_path=opt.valset, 
     feature_path=None, 
     label_path=opt.valset+"_GT.json",
+    keep_others=opt.keep_others,
     mode='features',
     debug=opt.debug, 
     transform=data_transforms['val']
@@ -187,8 +191,7 @@ dataloaders['train'] = torch.utils.data.DataLoader(
 )
 dataloaders['val'] = torch.utils.data.DataLoader(
     image_datasets['val'], 
-    batch_size=opt.batchsize, 
-    drop_last=True,
+    batch_size=opt.batchsize,
     shuffle=True, 
     num_workers=opt.threads, 
     pin_memory=True
@@ -214,29 +217,27 @@ use_gpu = torch.cuda.is_available()
 # In the following, parameter ``scheduler`` is an LR scheduler object from
 # ``torch.optim.lr_scheduler``.
 
-y = {}
-y['train_loss'] = []
-y['train_acc'] = []
-y['val_mAP'] = []
+y = {
+    'train_loss': [],
+    'train_acc': [],
+    'val_mAP': []
+}
 
 def val(model, loader, epoch):    
     model.cpu()
 
     if opt.PCB:
-        test_model = PCB_test(model)
+        test_model = PCB_test(model).cuda()
     
-    else:
+    if not opt.PCB:
         raise NotImplementedError("Not PCB Structure is not done for val() yet.")
         
         test_model = model
         test_model.classifier.classifier = nn.Sequential()
-    
 
     # -------------------------------- #
     # Extract the features             #
     # -------------------------------- #
-    test_model.cuda()
-
     features = extract_feature(test_model, loader)
     num_candidates = loader.dataset.candidates.shape[0]    
     candidate_feature = features[:num_candidates]
@@ -252,21 +253,22 @@ def val(model, loader, epoch):
     # -------------------------------- # 
     # Save the features into .mat file # 
     # -------------------------------- #
-    candidate_feature = candidate_feature.numpy()
+    # candidate_feature = candidate_feature.numpy()
     candidate_names   = np.asarray([os.path.basename(name).split('.')[0] for name in candidate_paths.tolist()])
     candidate_films   = np.asarray([name for name in candidate_films.tolist()])
-    cast_feature      = cast_feature.numpy()
+    # cast_feature      = cast_feature.numpy()
     cast_names        = np.asarray([os.path.basename(name).split('.')[0] for name in cast_paths.tolist()])
     cast_films        = np.asarray([name for name in cast_films.tolist()])
 
     result = {
-        'candidate_features': candidate_feature, 
+        'candidate_features': candidate_feature.numpy(), 
         'candidate_names': candidate_names,
         'candidate_films': candidate_films,
-        'cast_features': cast_feature, 
+        'cast_features': cast_feature.numpy(), 
         'cast_names': cast_names,
         'cast_films': cast_films, 
     }
+    print("Features saved to {}".format(os.path.join('model', opt.name, 'net_{}_result.mat'.format(str(epoch).zfill(3)))))
     scipy.io.savemat(os.path.join('model', opt.name, 'net_{}_result.mat'.format(str(epoch).zfill(3))), result)
 
     model.cuda()
@@ -280,7 +282,7 @@ def val(model, loader, epoch):
     # re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
     # print(re_rank)
 
-    mAP = evaluate_gpu.run(cast_feature, cast_names, cast_films, candidate_feature, candidate_names, candidate_films, 'result.csv', opt.valset+'_GT.json')
+    mAP = evaluate_gpu.run(cast_feature, cast_names, cast_films, candidate_feature, candidate_names, candidate_films, opt.valset + "_GT.json", "result.csv")
     
     return mAP
 
@@ -305,12 +307,11 @@ def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, de
         n = inputs.shape[0]
         optimizer.zero_grad()                
 
-        # inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
         if use_gpu:
-            inputs = inputs.cuda()
-            labels = labels.cuda()
-        # print(inputs.shape)
-        # print(labels.shape)
+            inputs, labels = inputs.cuda(), labels.cuda()
+        
+        # print("Inputs.shape: ", inputs.shape)
+        # print("Labels.shape: ", labels.shape)
 
         outputs = model(inputs)
 
@@ -321,11 +322,12 @@ def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, de
         if opt.PCB:
             part = {}
             sm = nn.Softmax(dim=1)
+
             for i in range(opt.num_part):
                 part[i] = outputs[i]
 
             # score = reduce((lambda x, y: x + y), [F.softmax(tensor, dim=1) for tensor in part.values()])
-            score = sm(part[0]) + sm(part[1]) +sm(part[2]) + sm(part[3]) + sm(part[4]) + sm(part[5])
+            score = sm(part[0]) + sm(part[1]) + sm(part[2]) + sm(part[3]) + sm(part[4]) + sm(part[5])
             _, preds = torch.max(score.data, 1)
 
             if debug:
@@ -335,6 +337,9 @@ def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, de
             loss = criterion(part[0], labels)
             for i in range(opt.num_part - 1):
                 loss += criterion(part[i+1], labels)
+
+            # print('Labels: ', labels)
+            # print('Preds: ', preds)
 
         # backward + optimize only if in training phase
         if epoch < opt.warm_epoch: 
@@ -349,24 +354,16 @@ def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, de
         running_corrects += float(torch.sum(preds == labels.data))
         
         # Temporal training informations
-        corrects = torch.mean(preds == labels.data)
-        
+        corrects = torch.mean((preds == labels.data).type(torch.float))
         if index % opt.log_interval == 0:
-            print('[Train] [Epoch {:2d}/{:2d}] [Iteration {:4d}/{:4d}] [Loss: {:.4f}] [Acc: {:.2%}]'.format(
-                'train', epoch, num_epochs, index, len(dataloaders['train']), loss.item(), corrects))
+            print('[Train] [Epoch {:2d}/{:2d}] [Iteration {:4d}/{:4d}] [Loss: {:.4f}] [Running Acc: {:.2%}]'.format(
+                epoch, num_epochs, index, len(dataloaders['train']), loss.item(), running_corrects / n / index))
         
     epoch_loss = running_loss / len(image_datasets['train'])
     epoch_acc  = running_corrects / len(image_datasets['train'])
 
     y['train_loss'].append(epoch_loss)
     y['train_acc'].append(epoch_acc)
-
-    # ------------------------
-    # All training epochs ends
-    # ------------------------
-    # load best model weights
-    # model.load_state_dict(best_model_wts)
-    # save_network(model, 'best')
     
     return model, epoch_loss, epoch_acc
 
@@ -512,6 +509,14 @@ if __name__ == "__main__":
     # best_acc = 0.0
     # best_mAP = 0.0
 
+    # with torch.no_grad():
+    #     val_mAP = val(model, dataloaders['val'], 0)
+    #     y['train_loss'].append(0)
+    #     y['train_acc'].append(0)
+    #     y['val_mAP'].append(val_mAP)
+    #     x_epoch.append(0)
+    #     draw_curve(x_epoch, y)
+
     for epoch in range(1, opt.epochs + 1):
         # Train
         model, epoch_loss, epoch_acc = train(model, criterion, optimizer_ft, scheduler, 
@@ -522,7 +527,9 @@ if __name__ == "__main__":
             save_network(model, epoch)
 
         # Validation
-        val_mAP = val(model, dataloaders['val'], epoch)
+        with torch.no_grad():
+            val_mAP = val(model, dataloaders['val'], epoch)
+        
         y['val_mAP'].append(val_mAP)
 
         # best_model_wts = model.state_dict()
