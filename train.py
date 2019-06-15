@@ -76,11 +76,12 @@ parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
 parser.add_argument('--use_NAS', action='store_true', help='use NAS' )
 parser.add_argument('--PCB', action='store_true', help='use PCB+ResNet50' )
 parser.add_argument('--keep_others', action='store_true', help='if true, the image of type others will be keeped.')
+parser.add_argument('--cast_image', action='store_true', help='if true, the cast image will train with candidates.')
 # parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
 parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
 parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
 # Training setting
-parser.add_argument('--batchsize', default=32, type=int, help='batchsize in training')
+parser.add_argument('--batchsize', default=16, type=int, help='batchsize in training')
 parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
 parser.add_argument('--milestones', default=[10, 20, 30], nargs='*', type=int)
 parser.add_argument('--gamma', default=0.1, type=float)
@@ -165,6 +166,7 @@ image_datasets['train'] = IMDbTrainset(
     feature_path=None, 
     label_path=opt.trainset+"_GT.json",
     keep_others=opt.keep_others,
+    cast_image=opt.cast_image,
     mode='classify',
     debug=opt.debug, 
     transform=data_transforms['train']
@@ -173,7 +175,8 @@ image_datasets['val'] = IMDbTrainset(
     movie_path=opt.valset, 
     feature_path=None, 
     label_path=opt.valset+"_GT.json",
-    keep_others=False,
+    keep_others=True,
+    cast_image=True,
     mode='features',
     debug=opt.debug, 
     transform=data_transforms['val']

@@ -109,7 +109,7 @@ class IMDbTrainset(Dataset):
         if self.cast_image:
             image_path, cast = self.images.iat[index, 1], self.images.iat[index, 2]
 
-        if self.mode == 'classify' or self.mode == 'faces':
+        elif self.mode == 'classify' or self.mode == 'faces':
             image_path, cast = self.candidates.iat[index, 1], self.candidates.iat[index, 2]
 
         # ---------------------------------------------------
@@ -117,10 +117,10 @@ class IMDbTrainset(Dataset):
         # ---------------------------------------------------
         image = Image.open(os.path.join(self.root_path, image_path))
 
-        # ---------------------------------------------------
-        # Features Output dimension: (feature_dim)
-        # Images Output dimension:   (channel, height, width)
-        # ---------------------------------------------------
+        # ------------------------------------------------- # 
+        # Label Output dimension:  (1)                      #
+        # Images Output dimension: (channel, height, width) #
+        # ------------------------------------------------- #
         if self.transform:
             image = self.transform(image)
 
