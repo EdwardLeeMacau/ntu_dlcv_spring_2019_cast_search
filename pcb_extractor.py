@@ -37,7 +37,7 @@ def extract_feature(model: nn.Module, loader: DataLoader, horizontal_flip=False,
     features = torch.FloatTensor()
     # print(features.device)
     
-    for index, (img) in enumerate(loader, 1):
+    for index, (img, _) in enumerate(loader, 1):
         n = img.size()[0]
         
         print('[Extracting] [Iteration {:4d}/{:4d}]'.format(index, len(loader)))
