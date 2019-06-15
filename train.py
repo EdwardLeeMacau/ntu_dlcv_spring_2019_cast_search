@@ -433,7 +433,7 @@ if not opt.PCB:
     ignored_params = list(map(id, model.classifier.parameters() ))
     base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
     optimizer_ft = optim.SGD([
-             {'params': base_params, 'lr': 0.1*opt.lr},
+             {'params': base_params, 'lr': 0.1 * opt.lr},
              {'params': model.classifier.parameters(), 'lr': opt.lr}
          ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
@@ -448,6 +448,9 @@ if opt.PCB:
                       )
     base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
     
+    # ----------------------------------------------- # 
+    # train pretrain parameters with 0.1 learing rate # 
+    # ----------------------------------------------- #
     if opt.optimizer == 'SGD':
         optimizer_ft = optim.SGD([
                 {'params': base_params, 'lr': 0.1 * opt.lr},
@@ -471,14 +474,6 @@ if opt.PCB:
                 {'params': model.classifier4.parameters(), 'lr': opt.lr},
                 {'params': model.classifier5.parameters(), 'lr': opt.lr},
             ], weight_decay=opt.weight_decay, betas=(opt.b1, opt.b2))
-
-
-######################################################################
-# Train and evaluate
-# ^^^^^^^^^^^^^^^^^^
-#
-# It should take around 1-2 hours on GPU. 
-#
 
 if __name__ == "__main__":
     dir_name = os.path.join('./model', opt.name)
@@ -514,11 +509,6 @@ if __name__ == "__main__":
 
     # with torch.no_grad():
     #     val_mAP = val(model, dataloaders['val'], 0)
-    #     y['train_loss'].append(0)
-    #     y['train_acc'].append(0)
-    #     y['val_mAP'].append(val_mAP)
-    #     x_epoch.append(0)
-    #     draw_curve(x_epoch, y)
 
     for epoch in range(1, opt.epochs + 1):
         # Train

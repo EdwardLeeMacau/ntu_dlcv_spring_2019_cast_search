@@ -246,7 +246,8 @@ def dataloader_unittest(path, debug=False):
         movie_path = path,
         feature_path = None,
         label_path = "./IMDb/val_GT.json",
-        mode = 'features',
+        mode='features',
+        keep_others=True,
         cast_image=True,
         debug = debug,
         transform = transforms.Compose([
@@ -260,6 +261,7 @@ def dataloader_unittest(path, debug=False):
     print("Length of dataset: {}".format(len(dataset)))
 
     for index, (image, _) in enumerate(dataloader, 1):
+        print(image.size())
         print("Image.shape: {}".format(image.shape))
         print()
 
