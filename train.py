@@ -330,7 +330,11 @@ def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, de
                 part[i] = outputs[i]
 
             # score = reduce((lambda x, y: x + y), [F.softmax(tensor, dim=1) for tensor in part.values()])
-            score = sm(part[0]) + sm(part[1]) + sm(part[2]) + sm(part[3]) + sm(part[4]) + sm(part[5])
+            # score = sm(part[0]) + sm(part[1]) + sm(part[2]) + sm(part[3]) + sm(part[4]) + sm(part[5])
+            score = 0
+            for i in range(opt.num_part):
+                score += sm(part[i])
+
             _, preds = torch.max(score.data, 1)
 
             if debug:
@@ -338,8 +342,10 @@ def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, de
                 print("labels : ", labels , '\n')
 
             loss = criterion(part[0], labels)
-            for i in range(opt.num_part - 1):
-                loss += criterion(part[i+1], labels)
+            # for i in range(opt.num_part - 1):
+            #     loss += criterion(part[i+1], labels)
+
+
 
             # print('Labels: ', labels)
             # print('Preds: ', preds)
