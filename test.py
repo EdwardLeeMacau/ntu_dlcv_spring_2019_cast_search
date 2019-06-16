@@ -37,196 +37,86 @@ import yaml
 from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
 
-import imdb
-import utils
+import evaluate_gpu
 import evaluate_rerank
+import imdb
+import pcb_extractor
+import utils
 from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
 
-# try:
-#     from apex.fp16_utils import *
-# except ImportError: # will be 3.x series
-#     print('This is not an error. If you want to use low precision, i.e., fp16, please install the apex with cuda support (https://github.com/NVIDIA/apex) and update pytorch to 1.0')
+def main(opt):
+    if not opt.features:
+        config_path = os.path.join(os.path.dirname(opt.resume), 'opts.yaml')
+        with open(config_path, 'r') as stream:
+            config = yaml.load(stream)
 
-parser = argparse.ArgumentParser(description='Testing')
-# Device Setting
-parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='gpu_ids: e.g. 0  0 1 2  0 2')
-# Model and dataset Setting
-parser.add_argument('--resume', type=str, help='Directory to the checkpoint')
-parser.add_argument('--testset', default='./IMDb/val', type=str, help='Directory of the validation set')
-parser.add_argument('--batchsize', default=128, type=int, help='batchsize')
-parser.add_argument('--features', type=str, help='Directory of the features.mat')
-parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
-# I/O Setting
-# parser.add_argument('--output', default='./output', type=str, help='Directory of the output path')
-parser.add_argument('--name', default='ft_ResNet50', type=str, help='save model path')
-# Model Setting
-parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
-parser.add_argument('--use_dense', action='store_true', help='use densenet121')
-parser.add_argument('--use_NAS', action='store_true', help='use NAS')
-parser.add_argument('--PCB', action='store_true', help='use PCB' )
-# parser.add_argument('--multi', action='store_true', help='use multiple query' )
-parser.add_argument('--ms', default=[1.0], nargs='*', type=float, help="multiple_scale: e.g. '1' '1 1.1'  '1 1.1 1.2'")
-# Set k-reciprocal Encoding
-parser.add_argument('--k1', default=20, type=int)
-parser.add_argument('--k2', default=6, type=int)
-parser.add_argument('--lambda_value', default=0.3, type=float)
+        opt.name = config['name']
+        opt.PCB       = config['PCB']
+        opt.use_dense = config['use_dense']
+        opt.use_NAS   = config['use_NAS']
+        opt.stride    = config['stride']
+        opt.img_size  = config['img_size']
 
-opt = parser.parse_args()
+        if 'nclasses' in config: # tp compatible with old config files
+            opt.nclasses = config['nclasses']
+        else: 
+            opt.nclasses = 199 # Including "others"
 
-# ---------------------------------
-# Load configuration of this model
-# ---------------------------------
-if not opt.features:
-    config_path = os.path.join(os.path.dirname(opt.resume), 'opts.yaml')
-    with open(config_path, 'r') as stream:
-        config = yaml.load(stream)
+    opt.img_size = tuple(opt.img_size)
+    opt.gpu_ids = list(filter(lambda x: x >= 0, opt.gpu_ids))
+    ms = [math.sqrt(float(s)) for s in opt.ms]
 
-    opt.name = config['name']
-    opt.PCB       = config['PCB']
-    opt.use_dense = config['use_dense']
-    opt.use_NAS   = config['use_NAS']
-    opt.stride    = config['stride']
-    opt.img_size  = config['img_size']
+    # set gpu ids
+    if len(opt.gpu_ids) > 0:
+        torch.cuda.set_device(opt.gpu_ids[0])
+        cudnn.benchmark = True
 
-    if 'nclasses' in config: # tp compatible with old config files
-        opt.nclasses = config['nclasses']
-    else: 
-        opt.nclasses = 199 # Including "others"
+    # set gpu / cpu
+    use_gpu = torch.cuda.is_available()
 
-opt.img_size = tuple(opt.img_size)
-opt.gpu_ids = list(filter(lambda x: x >= 0, opt.gpu_ids))
-ms = [math.sqrt(float(s)) for s in opt.ms]
+    # Load datas with dataloader.
+    if not opt.PCB:
+        data_transforms = transforms.Compose([
+                transforms.Resize(opt.img_size, interpolation=3),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
 
-# set gpu ids
-if len(opt.gpu_ids) > 0:
-    torch.cuda.set_device(opt.gpu_ids[0])
-    cudnn.benchmark = True
-
-# set gpu / cpu
-use_gpu = torch.cuda.is_available()
-
-# ------------------------------------
-# Load Data
-# ------------------------------------
-if not opt.PCB:
-    data_transforms = transforms.Compose([
+    if opt.PCB:
+        data_transforms = transforms.Compose([
             transforms.Resize(opt.img_size, interpolation=3),
             transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            #transforms.TenCrop(224),
-            #transforms.Lambda(lambda crops: torch.stack(
-            #   [transforms.ToTensor()(crop) 
-            #      for crop in crops]
-            # )),
-            #transforms.Lambda(lambda crops: torch.stack(
-            #   [transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(crop)
-            #       for crop in crops]
-            # ))
-    ])
-
-if opt.PCB:
-    data_transforms = transforms.Compose([
-        transforms.Resize(opt.img_size, interpolation=3),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]) 
-    ])
-
-image_datasets = imdb.IMDbTrainset(
-    movie_path=os.path.join(opt.testset), 
-    feature_path=None, 
-    label_path=opt.testset+"_GT.json",
-    mode='features',
-    transform=data_transforms
-)
-dataloaders = torch.utils.data.DataLoader(
-    image_datasets, 
-    batch_size=opt.batchsize,
-    shuffle=False,
-    num_workers=8
-)
-
-# --------------------------------------
-# Extract feature
-# ----------------------
-#
-# Extract feature from  a trained model.
-#
-def extract_feature(model, loader):
-    """
-      Use Pretrain network to extract the features.
-
-      Params:
-      - model: The CNN feature extarctor
-      - loader:
-
-      Return:
-      - features
-    """
-    features = torch.FloatTensor()
-    
-    for index, (img) in enumerate(loader, 1):
-        n = img.size()[0]
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]) 
+        ])
         
-        print('[{:5s}] [Iteration {:4d}/{:4d}]'.format('val', index, len(loader)))
- 
-        if not opt.PCB:
-            ff = torch.FloatTensor(n, 512).zero_().cuda()
-        if opt.PCB:
-            ff = torch.FloatTensor(n, 2048, opt.num_part).zero_().cuda() # we have six parts
-
-        # Run the images with normal, horizontal flip
-        for i in range(2):
-            if i == 1:
-                img = utils.fliplr(img)
-            
-            input_img = img.cuda()
-            for scale in ms:
-                if scale != 1:
-                    # bicubic is only available in pytorch >= 1.1
-                    input_img = nn.functional.interpolate(input_img, scale_factor=scale, mode='bicubic', align_corners=False)
-                outputs = model(input_img) 
-                ff += outputs
-        
-        # -----------------------------------------------------------------------------------
-        # norm feature
-        # if opt.PCB:
-        #   feature size (n, 2048 x num_part)
-        # if not opt.PCB:
-        #   feature size (n, 512)
-        # 1. To treat every part equally, I calculate the norm for every 2048-dim part feature.
-        # 2. To keep the cosine score==1, sqrt(6) is added to norm the whole feature (2048*6).
-        # ------------------------------------------------------------------------------------    
-        if opt.PCB:
-            fnorm = torch.norm(ff, p=2, dim=1, keepdim=True) * np.sqrt(6) 
-            ff = ff.div(fnorm.expand_as(ff))
-            ff = ff.view(ff.size(0), -1)
-        else:
-            fnorm = torch.norm(ff, p=2, dim=1, keepdim=True)
-            ff = ff.div(fnorm.expand_as(ff))
-
-        # FF.shape = (n, 2048 * num_part)
-        # print("FF.shape: {}".format(ff.shape))
-
-        # Features = (images, 2048 * num_part)
-        features = torch.cat((features, ff.data.cpu()), 0)
-        # print("Features.shape: {}".format(features.shape))
+    image_datasets = imdb.IMDbTrainset(
+        movie_path=os.path.join(opt.testset), 
+        feature_path=None, 
+        label_path=opt.testset+"_GT.json",
+        mode='features',
+        transform=data_transforms
+    )
+    dataloaders = torch.utils.data.DataLoader(
+        image_datasets, 
+        batch_size=opt.batchsize,
+        shuffle=False,
+        num_workers=8
+    )
     
-    return features
-
-def main():
+    # ------------------------------ #
+    # If features file is not exists #
+    # ------------------------------ #
     if not opt.features:
-        # ---------------------------------------------------------------------
-        # We need to transfrm all candidates images and cast images to features
-        # And query the cast inside the same films
-        # ---------------------------------------------------------------------
+        # --------------------------------------------------------------------- #
+        # We need to transfrm all candidates images and cast images to features #
+        # And query the cast inside the same films                              #
+        # --------------------------------------------------------------------- #
         candidate_paths = image_datasets.candidates['level_1']
         candidate_films = image_datasets.candidates['level_0']
         cast_paths = image_datasets.casts['level_1']
         cast_films = image_datasets.casts['level_0']
 
-        # -----------------------------------
-        # Load datas and trained model
-        # -----------------------------------
+        # Load trained model 
         if opt.use_dense:
             model_structure = ft_net_dense(opt.nclasses)
         elif opt.use_NAS:
@@ -254,7 +144,7 @@ def main():
 
         # Extract feature
         with torch.no_grad():
-            features = extract_feature(model, dataloaders)
+            features = pcb_extractor.extract_feature(model, dataloaders)
 
             # candidates first
             num_candidates = dataloaders.dataset.candidates.shape[0]
@@ -283,6 +173,9 @@ def main():
         print("Features saved to {}".format(mat_path))
         scipy.io.savemat(mat_path, result)
 
+    # ----------------------- #
+    # If features file exists #
+    # ----------------------- #
     if opt.features:
         result = scipy.io.loadmat(opt.features)
 
@@ -293,21 +186,51 @@ def main():
         candidate_names   = result['candidate_names']
         candidate_films   = result['candidate_films']
 
+    # ------------------------- #
+    # Read, and run the process #
+    # ------------------------- #
     print("Cast_feature.shape {}".format(cast_feature.shape))
     print("Cast_film.shape:   {}".format(cast_films.shape))
     print("Cast_name.shape:   {}".format(cast_names.shape))
     print("Candidate_feature.shape: {}".format(candidate_feature.shape))
     print("Candidate_name.shape: {}".format(candidate_names.shape))
     print("Candidate_film.shape: {}".format(candidate_films.shape))
-    
+
+    mAP = evaluate_gpu.run(cast_feature, cast_names, cast_films, candidate_feature, candidate_names, candidate_films, opt.gt, opt.output)
+    print("mAP(with default dot product): ", mAP)
     # re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
-    # print(re_rank)
-
-    # subprocess.call(['evaluate_gpu.py', *args])
-
-    # result = './model/{}/result.txt'.format(opt.name)
-    # os.system('python evaluate_gpu.py | tee -a {}'.format(result))
-
+    print("mAP(with rerank algorithm):    ", mAP)
+    
 if __name__ == "__main__":
+    # --------------------------------- #
+    # Load configuration of this model  #
+    # --------------------------------- #
+    parser = argparse.ArgumentParser(description='Testing')
+    # Device Setting
+    parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='gpu_ids: e.g. 0  0 1 2  0 2')
+    # Model and dataset Setting
+    parser.add_argument('--resume', type=str, help='Directory to the checkpoint')
+    parser.add_argument('--testset', default='./IMDb/val', type=str, help='Directory of the validation set')
+    parser.add_argument('--output', default='./result.csv', type=str, help='Directory of the result file.')
+    parser.add_argument('--gt', default='./IMDb/val_GT.json', type=str, help='Directory of the output path')
+    parser.add_argument('--batchsize', default=24, type=int, help='batchsize')
+    parser.add_argument('--features', type=str, help='Directory of the features.mat')
+    parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
+    # I/O Setting
+    parser.add_argument('--name', default='ft_ResNet50', type=str, help='save model path')
+    # Model Setting
+    parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
+    parser.add_argument('--use_dense', action='store_true', help='use densenet121')
+    parser.add_argument('--use_NAS', action='store_true', help='use NAS')
+    parser.add_argument('--PCB', action='store_true', help='use PCB' )
+    # parser.add_argument('--multi', action='store_true', help='use multiple query' )
+    parser.add_argument('--ms', default=[1.0], nargs='*', type=float, help="multiple_scale: e.g. '1' '1 1.1'  '1 1.1 1.2'")
+    # Set k-reciprocal Encoding
+    parser.add_argument('--k1', default=20, type=int)
+    parser.add_argument('--k2', default=6, type=int)
+    parser.add_argument('--lambda_value', default=0.3, type=float)
+
+    opt = parser.parse_args()
+    
     utils.details(opt)
-    main()
+    main(opt)

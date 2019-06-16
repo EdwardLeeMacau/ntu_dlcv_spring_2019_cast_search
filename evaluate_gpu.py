@@ -16,7 +16,7 @@ import numpy as np
 import scipy.io
 import torch
 
-import eval
+import final_eval
 
 def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
     # qf contains 1 image feature
@@ -25,15 +25,22 @@ def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
     query = qf.view(-1,1)
     # print(query.shape)
     
-    # ---------------------------------- # 
-    # Dot product                        #
-    #   score[i] = np.dot(gf[i], query)  #
-    # ---------------------------------- #
+    # --------------------------------- # 
+    # Dot product                       #
+    #   score[i] = np.dot(gf[i], query) #
+    # Change to l2 distance             #
+    #   l2_dist = 2. - 2 * dot_dist     #  
+    # --------------------------------- #
     score = torch.mm(gf, query)
     score = score.squeeze(1).cpu()
     score = score.numpy()
 
-    # predict index
+    # --------------------------------- # 
+    # Dot product                       #
+    #   priority from 1 to -1           #
+    # Change to l2 distance             #
+    #   priority from 0 to 1            #  
+    # --------------------------------- #
     index = np.argsort(score)  # from small to large
     index = index[::-1]        # inverse it
 
@@ -63,36 +70,6 @@ def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
     # Cumulative match curve = CMC
     CMC_tmp = compute_mAP(index, good_index, junk_index)
     return index, CMC_tmp
-
-# Deprecated 
-def compute_mAP(index, good_index, junk_index):
-    ap = 0
-    cmc = torch.IntTensor(len(index)).zero_()
-    if good_index.size==0:   # if empty
-        cmc[0] = -1
-        return ap,cmc
-
-    # remove junk_index
-    mask = np.in1d(index, junk_index, invert=True)
-    index = index[mask]
-
-    # find good_index index
-    ngood = len(good_index)
-    mask = np.in1d(index, good_index)
-    rows_good = np.argwhere(mask==True)
-    rows_good = rows_good.flatten()
-    
-    cmc[rows_good[0]:] = 1
-    for i in range(ngood):
-        d_recall = 1.0/ngood
-        precision = (i+1)*1.0/(rows_good[i]+1)
-        if rows_good[i]!=0:
-            old_precision = i*1.0/rows_good[i]
-        else:
-            old_precision=1.0
-        ap = ap + d_recall*(old_precision + precision)/2
-
-    return ap, cmc
 
 def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, candidate_film, gt, output):
     """
