@@ -41,10 +41,8 @@ class IMDbTrainset(Dataset):
         assert ((mode == 'classify') or (mode == 'features') or (mode == 'faces')), "The parameter 'mode' must be 'classify', 'feature' or 'faces'"
         assert (not (mode == 'features') or (cast_image)), "Cast images must be loaded in dataset if mode is 'features'"
 
-        self.movie_path   = movie_path
-        # self.feature_path = feature_path
-        # self.label_path   = label_path
-        self.root_path    = os.path.dirname(self.movie_path)
+        self.movie_path = movie_path
+        self.root_path  = os.path.dirname(self.movie_path)
         
         self.mode = mode
         self.keep_others = keep_others
@@ -145,6 +143,33 @@ class IMDbTrainset(Dataset):
 
         return image, label_mapped
 
+class IMDbFolderLoader(Dataset):
+    def __init__(self, movie_path, transform=None, debug=False):
+        self.movie_path = movie_path
+        self.transform  = transform
+
+        # Read as pandas.DataFrame
+        self.candidates = pd.read_json(os.path.join(self.movie_path, 'candidate.json'), orient='index', typ='series').reset_index() 
+        self.casts      = pd.read_json(os.path.join(self.movie_path, 'cast.json'), orient='index', typ='series') .reset_index()
+        self.images     = pd.concat((self.candidates, self.casts), axis=0, ignore_index=True)
+        
+    def __len__(self):
+        return self.images.shape[0]
+
+    def __getitem__(self, index):
+
+        # --------------------------------------------- #
+        # To Read the images:                           #
+        #   Output dimension: (channel, height, width)  #
+        # --------------------------------------------- #
+        image_path, cast = self.images.iat[index, 1], self.images.iat[index, 2]
+        image = Image.open(os.path.join(self.movie_path, image_path))
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image
+        
 def collate_fn(batch):
     """
       To define a function that reads the video by batch.

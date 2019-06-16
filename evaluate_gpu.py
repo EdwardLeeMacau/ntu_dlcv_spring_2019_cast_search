@@ -19,11 +19,7 @@ import torch
 import final_eval
 
 def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
-    # qf contains 1 image feature
-    # print("Qf.shape: ", qf.shape)
-    # print("GF.shape: ", gf.shape)
-    query = qf.view(-1,1)
-    # print(query.shape)
+    query = qf.view(-1, 1)
     
     # --------------------------------- # 
     # Dot product                       #
@@ -75,8 +71,6 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
     """
       Run the mAP validation process.
 
-      Params:
-
       Return:
       - mAP
     """
@@ -86,19 +80,11 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
     for i in tqdm(range(cast_feature.shape[0])):
         mask_tensor = torch.from_numpy((candidate_film == cast_film[i]).astype(np.uint8)).byte()
         mask_numpy  = mask_tensor.numpy().astype(bool)
-        # print("select_film: ", cast_film[i])
-        # print(mask.dtype)
-        # print(candidate_feature[mask_tensor].shape)
-        # print(candidate_name[mask_numpy].shape)
 
         index = evaluate(cast_feature[i], None, None, candidate_feature[mask_tensor], None, None)
         names = candidate_name[mask_numpy][index]
         
         cast_id = cast_name[i]
-        
-        # print("Index.shape: ", index.shape)
-        # print("Candidates:  ", names.shape)
-        # print("Cast_id:     ", cast_id)
 
         result.append({
             'Id': cast_id, 
@@ -115,6 +101,26 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
     mAP = final_eval.eval(output, gt)
 
     return mAP
+
+def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name) -> list:
+    """
+      Return:
+      - result: 
+    """
+    result = []
+
+    for i in range(cast_feature.shape[0]):
+        index = evaluate(cast_feature[i], None, None, candidate_feature, None, None)
+        names = candidate_name[index]
+        
+        cast_id = cast_name[i]
+
+        result.append({
+            'Id': cast_id, 
+            'Rank': ' '.join(names)
+        })
+    
+    return result
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Evaluate_GPU')
@@ -152,30 +158,3 @@ if __name__ == "__main__":
     if not opt.multi:
         mAP = run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, candidate_film, opt.gt, opt.output)
         print("mAP: {:2%}".format(mAP))
-
-    if opt.multi:
-        raise NotImplementedError("Not test yet. ")
-
-        # m_result = scipy.io.loadmat('./mat/multi_query_{}.mat'.format(opt.name))
-        mquery_feature = torch.FloatTensor(m_result['mquery_f'])
-        mquery_cam = m_result['mquery_cam'][0]
-        mquery_label = m_result['mquery_label'][0]
-        mquery_feature = mquery_feature.cuda()
-        # multiple-query
-        CMC = torch.IntTensor(len(gallery_label)).zero_()
-        ap = 0.0
-    
-        for i in range(len(query_label)):
-            mquery_index1 = np.argwhere(mquery_label==query_label[i])
-            mquery_index2 = np.argwhere(mquery_cam==query_cam[i])
-            mquery_index =  np.intersect1d(mquery_index1, mquery_index2)
-            mq = torch.mean(mquery_feature[mquery_index,:], dim=0)
-            ap_tmp, CMC_tmp = evaluate(mq,query_label[i],query_cam[i],gallery_feature,gallery_label,gallery_cam)
-            if CMC_tmp[0]==-1:
-                continue
-            CMC = CMC + CMC_tmp
-            ap += ap_tmp
-            #print(i, CMC_tmp[0])
-        CMC = CMC.float()
-        CMC = CMC/len(query_label) #average CMC
-        print('multi Rank@1:%f Rank@5:%f Rank@10:%f mAP:%f'%(CMC[0],CMC[4],CMC[9],ap/len(query_label)))

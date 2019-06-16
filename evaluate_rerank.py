@@ -47,27 +47,6 @@ def evaluate(score, ql, qc, gl, gc):
 
     return good_index, junk_index
 
-def output(path):
-    """
-      Params:
-      - path: the directory to output csv file
-
-      Return: None
-    """
-    raise NotImplementedError
-
-# def run(query_features, gallery_features, k1=20, k2=6, lambda_value=0.3):
-#     # re-ranking
-#     print('calculate initial distance')
-#     q_g_dist = np.dot(query_features, np.transpose(gallery_features))
-#     q_q_dist = np.dot(query_features, np.transpose(query_features))
-#     g_g_dist = np.dot(gallery_features, np.transpose(gallery_features))
-#     
-#     print('reranking')
-#     re_rank = re_ranking(q_g_dist, q_q_dist, g_g_dist, k1=k1, k2=k2, lambda_value=lambda_value)
-
-#     return re_rank
-
 def main(opt):
     # ------------ #
     # Read results #
@@ -144,6 +123,28 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
     mAP = final_eval.eval(output, gt)
         
     return mAP
+
+def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, k1=20, k2=6, lambda_value=0.3) -> list:
+    q_g_distance = np.dot(cast_feature, np.transpose(candidate_feature))
+    q_q_distance = np.dot(cast_feature, np.transpose(cast_feature))
+    g_g_distance = np.dot(candidate_feature, np.transpose(candidate_feature))
+    
+    final_distance = re_ranking(q_g_distance, q_q_distance, g_g_distance, k1=k1, k2=k2, lambda_value=lambda_value)
+
+    result = []
+    for j in range(final_distance.shape[0]):
+        distance = final_distance[j]
+        index = np.argsort(distance)
+        
+        cast_id = q_name[j]
+        candidates = g_name[index]
+
+        result.append({
+            'Id': cast_id, 
+            'Rank': ' '.join(candidates)
+        })
+    
+    return result
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Evaluate_GPU')

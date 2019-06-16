@@ -21,6 +21,7 @@
 from __future__ import division, print_function
 
 import argparse
+import csv
 import math
 import os
 import subprocess
@@ -36,19 +37,22 @@ import torchvision
 import yaml
 from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
+from tqdm import tqdm
 
 import evaluate_gpu
 import evaluate_rerank
+import final_eval
 import imdb
 import pcb_extractor
 import utils
 from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
 
+
 def main(opt):
-    # ------------------------------ #
-    # If features file is not exists #
-    # ------------------------------ #
     if not opt.features:
+        # --------------------------------- #
+        # Load configuration of this model  #
+        # --------------------------------- #
         config_path = os.path.join(os.path.dirname(opt.resume), 'opts.yaml')
         with open(config_path, 'r') as stream:
             config = yaml.load(stream)
@@ -91,20 +95,6 @@ def main(opt):
                 transforms.ToTensor(),
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]) 
             ])
-            
-        image_datasets = imdb.IMDbTrainset(
-            movie_path=os.path.join(opt.testset), 
-            feature_path=None, 
-            label_path=opt.testset+"_GT.json",
-            mode='features',
-            transform=data_transforms
-        )
-        dataloaders = torch.utils.data.DataLoader(
-            image_datasets, 
-            batch_size=opt.batchsize,
-            shuffle=False,
-            num_workers=8
-        )
 
         # --------------------------------------------------------------------- #
         # We need to transfrm all candidates images and cast images to features #
@@ -140,72 +130,100 @@ def main(opt):
         # Throught it to the gpu
         if use_gpu:
             model = model.cuda()
+        
+        for movie in tqdm(os.listdir(opt.testset)):
+            image_datasets = imdb.IMDbFolderLoader(
+                movie_path=os.path.join(opt.testset, movie), 
+                transform=data_transforms
+            )
+            dataloaders = torch.utils.data.DataLoader(
+                image_datasets,
+                batch_size=opt.batchsize,
+                shuffle=False,
+                num_workers=8
+            )
 
-        # Extract feature
-        with torch.no_grad():
-            features = pcb_extractor.extract_feature(model, dataloaders)
+            # Extract feature
+            with torch.no_grad():
+                features = pcb_extractor.extract_feature(model, dataloaders)
 
-            # candidates first
-            num_candidates = dataloaders.dataset.candidates.shape[0]
-            
-            candidate_feature = features[:num_candidates]
-            cast_feature      = features[num_candidates:]
+                # candidates first
+                num_candidates = dataloaders.dataset.candidates.shape[0]
+                
+                candidate_feature = features[:num_candidates]
+                cast_feature      = features[num_candidates:]
 
-        candidate_feature = candidate_feature.numpy()
-        candidate_names   = np.asarray([os.path.basename(name).split('.')[0] for name in candidate_paths.tolist()])
-        candidate_films   = np.asarray([name for name in candidate_films.tolist()])
-        cast_feature      = cast_feature.numpy()
-        cast_names        = np.asarray([os.path.basename(name).split('.')[0] for name in cast_paths.tolist()])
-        cast_films        = np.asarray([name for name in cast_films.tolist()])
+            candidate_feature = candidate_feature.numpy()
+            candidate_names   = np.asarray([os.path.basename(name).split('.')[0] for name in candidate_paths.tolist()])
+            candidate_films   = np.asarray([name for name in candidate_films.tolist()])
+            cast_feature      = cast_feature.numpy()
+            cast_names        = np.asarray([os.path.basename(name).split('.')[0] for name in cast_paths.tolist()])
+            cast_films        = np.asarray([name for name in cast_films.tolist()])
 
-        # ----------------- #
-        # Save to .mat file #
-        # ----------------- #
-        result = {
-            'candidate_features': candidate_feature, 
-            'candidate_names': candidate_names,
-            'candidate_films': candidate_films,
-            'cast_features': cast_feature, 
-            'cast_names': cast_names,
-            'cast_films': cast_films, 
-        }
+            # ----------------- #
+            # Save to .mat file #
+            # ----------------- #
+            result = {
+                'candidate_features': candidate_feature, 
+                'candidate_names': candidate_names,
+                'candidate_films': candidate_films,
+                'cast_features': cast_feature, 
+                'cast_names': cast_names,
+                'cast_films': cast_films, 
+            }
 
-        mat_path = os.path.join(os.path.dirname(opt.resume), os.path.basename(opt.resume).split('.')[0] + '_result.mat')
-        print("Features saved to {}".format(mat_path))
-        scipy.io.savemat(mat_path, result)
+            mat_path = os.path.join('./features', movie + '_result.mat')
+            print("Features saved to {}".format(mat_path))
+            scipy.io.savemat(mat_path, result)
 
-    # ----------------------- #
-    # If features file exists #
-    # ----------------------- #
+        return
+
     if opt.features:
-        result = scipy.io.loadmat(opt.features)
+        results_gpu, results_rerank = [], []
 
-        cast_feature = result['cast_features']
-        cast_names   = result['cast_names']
-        cast_films   = result['cast_films']
-        candidate_feature = result['candidate_features']
-        candidate_names   = result['candidate_names']
-        candidate_films   = result['candidate_films']
+        for movie in tqdm(opt.testset):
+            feature_path = os.path.join('./features', movie + '_result.mat')
+            result = scipy.io.loadmat(feature_path)
 
-    # ------------------------- #
-    # Read, and run the process #
-    # ------------------------- #
-    print("Cast_feature.shape {}".format(cast_feature.shape))
-    print("Cast_film.shape:   {}".format(cast_films.shape))
-    print("Cast_name.shape:   {}".format(cast_names.shape))
-    print("Candidate_feature.shape: {}".format(candidate_feature.shape))
-    print("Candidate_name.shape: {}".format(candidate_names.shape))
-    print("Candidate_film.shape: {}".format(candidate_films.shape))
+            cast_feature = result['cast_features']
+            cast_names   = result['cast_names']
+            cast_films   = result['cast_films']
+            candidate_feature = result['candidate_features']
+            candidate_names   = result['candidate_names']
+            candidate_films   = result['candidate_films']
 
-    mAP = evaluate_gpu.run(cast_feature, cast_names, cast_films, candidate_feature, candidate_names, candidate_films, opt.gt, opt.output)
-    print("mAP(with default dot product) {:.2%}: ", mAP)
-    mAP = evaluate_rerank.run(cast_feature, cast_names, cast_films, candidate_feature, candidate_names, candidate_films, opt.gt, opt.output, opt.k1, opt.k2, opt.lambda_value)
-    print("mAP(with rerank algorithm): {:.2%} ", mAP)
+            print("Cast_feature.shape {}".format(cast_feature.shape))
+            print("Cast_film.shape:   {}".format(cast_films.shape))
+            print("Cast_name.shape:   {}".format(cast_names.shape))
+            print("Candidate_feature.shape: {}".format(candidate_feature.shape))
+            print("Candidate_name.shape: {}".format(candidate_names.shape))
+            print("Candidate_film.shape: {}".format(candidate_films.shape))
+
+            result = evaluate_gpu.predict_1_movie(cast_feature, cast_names, candidate_feature, candidate_names)   
+            results_gpu.append(result)
+
+            result = evaluate_rerank.predict_1_movie(cast_feature, cast_names, candidate_feature, candidate_names, opt.k1, opt.k2, opt.lambda_value)
+            results_rerank.append(result)
+
+        with open('gpu_' + opt.output, 'w') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=['ID', 'Rank'])
+            writer.writeheader()
+            writer.writerows(results_gpu)
+
+        with open('rerank_' + opt.output, 'w') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=['ID', 'Rank'])
+            writer.writeheader()
+            writer.writerows(results_rerank)
+            
+        mAP = final_eval.eval('gpu_' + opt.output, opt.gt)
+        print("mAP(with default dot product) {:.2%}: ", mAP)
+
+        mAP = final_eval.eval('rerank_' + opt.output, opt.gt)
+        print("mAP(with reranking strategic): {:.2%}: ", mAP)
+
+        return
     
 if __name__ == "__main__":
-    # --------------------------------- #
-    # Load configuration of this model  #
-    # --------------------------------- #
     parser = argparse.ArgumentParser(description='Testing')
     # Device Setting
     parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='gpu_ids: e.g. 0  0 1 2  0 2')
@@ -214,7 +232,7 @@ if __name__ == "__main__":
     parser.add_argument('--testset', default='./IMDb/val', type=str, help='Directory of the validation set')
     parser.add_argument('--output', default='./result.csv', type=str, help='Directory of the result file.')
     parser.add_argument('--gt', default='./IMDb/val_GT.json', type=str, help='Directory of the output path')
-    parser.add_argument('--batchsize', default=24, type=int, help='batchsize')
+    parser.add_argument('--batchsize', default=128, type=int, help='batchsize')
     parser.add_argument('--features', type=str, help='Directory of the features.mat')
     parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
     # I/O Setting
@@ -234,4 +252,7 @@ if __name__ == "__main__":
     opt = parser.parse_args()
     
     utils.details(opt)
+
+    os.makedirs(os.path.join('./feature'), exist_ok=True)
+
     main(opt)
