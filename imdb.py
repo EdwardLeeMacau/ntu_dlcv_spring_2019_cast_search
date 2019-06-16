@@ -72,7 +72,7 @@ class IMDbTrainset(Dataset):
         
         if keep_others:
             num_casts = self.casts.shape[0]
-            self.casts.loc[num_casts] = [np.nan, np.nan, 'others']
+            self.casts.loc[num_casts] = ['others', 'no_others_exists.jpg', 'others']
 
         self.classes = list(self.casts['level_0'])
 
