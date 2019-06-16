@@ -81,18 +81,19 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
       - mAP
     """
     cast_feature, candidate_feature = cast_feature.cuda(), candidate_feature.cuda()
-    
+
     result = []
     for i in tqdm(range(cast_feature.shape[0])):
         mask_tensor = torch.from_numpy((candidate_film == cast_film[i]).astype(np.uint8)).byte()
         mask_numpy  = mask_tensor.numpy().astype(bool)
         # print("select_film: ", cast_film[i])
         # print(mask.dtype)
-        print(candidate_feature[mask_tensor].shape)
-        print(candidate_name[mask_numpy].shape)
+        # print(candidate_feature[mask_tensor].shape)
+        # print(candidate_name[mask_numpy].shape)
 
         index = evaluate(cast_feature[i], None, None, candidate_feature[mask_tensor], None, None)
         names = candidate_name[mask_numpy][index]
+        
         cast_id = cast_name[i]
         
         # print("Index.shape: ", index.shape)
@@ -111,7 +112,7 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
         for r in result:
             writer.writerow(r)
 
-    mAP = eval.eval(output, gt)
+    mAP = final_eval.eval(output, gt)
 
     return mAP
 

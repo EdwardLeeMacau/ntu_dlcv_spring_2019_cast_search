@@ -196,10 +196,10 @@ def main(opt):
     print("Candidate_name.shape: {}".format(candidate_names.shape))
     print("Candidate_film.shape: {}".format(candidate_films.shape))
 
-    mAP = evaluate_gpu.run(cast_feature, cast_names, cast_films, candidate_feature, candidate_names, candidate_films, opt.gt, opt.output)
-    print("mAP(with default dot product): ", mAP)
-    # re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
-    print("mAP(with rerank algorithm):    ", mAP)
+    mAP = evaluate_gpu.run(torch.Tensor(cast_feature), cast_names, cast_films, torch.Tensor(candidate_feature), candidate_names, candidate_films, opt.gt, opt.output)
+    print("mAP(with default dot product) {:.2%}: ", mAP)
+    mAP = evaluate_rerank.run(cast_feature, cast_names, cast_films, candidate_feature, candidate_names, candidate_films, opt.gt, opt.output, opt.k1, opt.k2, opt.lambda_value)
+    print("mAP(with rerank algorithm): {:.2%} ", mAP)
     
 if __name__ == "__main__":
     # --------------------------------- #

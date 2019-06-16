@@ -56,22 +56,17 @@ def output(path):
     """
     raise NotImplementedError
 
-def run(query_features, gallery_features, k1=20, k2=6, lambda_value=0.3):
-    # ------------------------
-    # Mapping:
-    #   cast -> query
-    #   candidate -> gallery
-    # ------------------------
-    # re-ranking
-    print('calculate initial distance')
-    q_g_dist = np.dot(query_features, np.transpose(gallery_features))
-    q_q_dist = np.dot(query_features, np.transpose(query_features))
-    g_g_dist = np.dot(gallery_features, np.transpose(gallery_features))
-    
-    print('reranking')
-    re_rank = re_ranking(q_g_dist, q_q_dist, g_g_dist, k1=k1, k2=k2, lambda_value=lambda_value)
+# def run(query_features, gallery_features, k1=20, k2=6, lambda_value=0.3):
+#     # re-ranking
+#     print('calculate initial distance')
+#     q_g_dist = np.dot(query_features, np.transpose(gallery_features))
+#     q_q_dist = np.dot(query_features, np.transpose(query_features))
+#     g_g_dist = np.dot(gallery_features, np.transpose(gallery_features))
+#     
+#     print('reranking')
+#     re_rank = re_ranking(q_g_dist, q_q_dist, g_g_dist, k1=k1, k2=k2, lambda_value=lambda_value)
 
-    return re_rank
+#     return re_rank
 
 def main(opt):
     # ------------ #
@@ -93,6 +88,12 @@ def main(opt):
     print("Candidate_feature.shape: {}".format(candidate_feature.shape))
     print("Candidate_name.shape: {}".format(candidate_name.shape))
     print("Candidate_film.shape: {}".format(candidate_film.shape))
+
+    run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, candidate_film, opt.gt, opt.output)
+
+def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, candidate_film, gt, output, k1=20, k2=6, lambda_value=0.3):
+    cast_name = cast_name[:-1]
+    cast_film = cast_film[:-1]
 
     films = np.unique(cast_film)
     # ------------ #
@@ -133,14 +134,14 @@ def main(opt):
             })
 
     # Open with binary on windows
-    with open(opt.output, 'w', encoding='utf-8') as csvfile:
+    with open(output, 'w', encoding='utf-8') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
 
         writer.writeheader()
         for r in result:
             writer.writerow(r)
 
-    mAP = final_eval.eval(opt.output, opt.gt)
+    mAP = final_eval.eval(output, gt)
         
     return mAP
 
