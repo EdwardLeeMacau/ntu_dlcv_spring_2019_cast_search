@@ -136,8 +136,8 @@ def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, 
         distance = final_distance[j]
         index = np.argsort(distance)
         
-        cast_id = q_name[j]
-        candidates = g_name[index]
+        cast_id = cast_name[j]
+        candidates = candidate_name[index]
 
         result.append({
             'Id': cast_id, 

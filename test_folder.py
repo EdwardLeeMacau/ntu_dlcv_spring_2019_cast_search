@@ -96,15 +96,6 @@ def main(opt):
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]) 
             ])
 
-        # --------------------------------------------------------------------- #
-        # We need to transfrm all candidates images and cast images to features #
-        # And query the cast inside the same films                              #
-        # --------------------------------------------------------------------- #
-        candidate_paths = image_datasets.candidates['level_1']
-        candidate_films = image_datasets.candidates['level_0']
-        cast_paths = image_datasets.casts['level_1']
-        cast_films = image_datasets.casts['level_0']
-
         # Load trained model 
         if opt.use_dense:
             model_structure = ft_net_dense(opt.nclasses)
@@ -131,7 +122,7 @@ def main(opt):
         if use_gpu:
             model = model.cuda()
         
-        for movie in tqdm(os.listdir(opt.testset)):
+        for movie in tqdm(sorted(os.listdir(opt.testset))):
             image_datasets = imdb.IMDbFolderLoader(
                 movie_path=os.path.join(opt.testset, movie), 
                 transform=data_transforms
@@ -143,13 +134,17 @@ def main(opt):
                 num_workers=8
             )
 
+            candidate_paths = image_datasets.candidates['index']
+            candidate_films = np.repeat(movie, candidate_paths.shape[0]).astype(object)
+            cast_paths      = image_datasets.casts['index']
+            cast_films      = np.repeat(movie, cast_paths.shape[0]).astype(object)
+
             # Extract feature
             with torch.no_grad():
                 features = pcb_extractor.extract_feature(model, dataloaders)
 
                 # candidates first
-                num_candidates = dataloaders.dataset.candidates.shape[0]
-                
+                num_candidates    = dataloaders.dataset.candidates.shape[0]                
                 candidate_feature = features[:num_candidates]
                 cast_feature      = features[num_candidates:]
 
@@ -181,7 +176,7 @@ def main(opt):
     if opt.features:
         results_gpu, results_rerank = [], []
 
-        for movie in tqdm(opt.testset):
+        for movie in tqdm(sorted(os.listdir(opt.testset))):
             feature_path = os.path.join('./features', movie + '_result.mat')
             result = scipy.io.loadmat(feature_path)
 
@@ -192,34 +187,38 @@ def main(opt):
             candidate_names   = result['candidate_names']
             candidate_films   = result['candidate_films']
 
-            print("Cast_feature.shape {}".format(cast_feature.shape))
-            print("Cast_film.shape:   {}".format(cast_films.shape))
-            print("Cast_name.shape:   {}".format(cast_names.shape))
-            print("Candidate_feature.shape: {}".format(candidate_feature.shape))
-            print("Candidate_name.shape: {}".format(candidate_names.shape))
-            print("Candidate_film.shape: {}".format(candidate_films.shape))
+            # print("Cast_feature.shape {}".format(cast_feature.shape))
+            # print("Cast_film.shape:   {}".format(cast_films.shape))
+            # print("Cast_name.shape:   {}".format(cast_names.shape))
+            # print("Candidate_feature.shape: {}".format(candidate_feature.shape))
+            # print("Candidate_name.shape: {}".format(candidate_names.shape))
+            # print("Candidate_film.shape: {}".format(candidate_films.shape))
 
             result = evaluate_gpu.predict_1_movie(cast_feature, cast_names, candidate_feature, candidate_names)   
-            results_gpu.append(result)
+            results_gpu.extend(result)
 
             result = evaluate_rerank.predict_1_movie(cast_feature, cast_names, candidate_feature, candidate_names, opt.k1, opt.k2, opt.lambda_value)
-            results_rerank.append(result)
+            results_rerank.extend(result)
 
         with open('gpu_' + opt.output, 'w') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=['ID', 'Rank'])
+            writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
             writer.writeheader()
-            writer.writerows(results_gpu)
+            
+            for r in results_gpu:
+                writer.writerow(r)
 
         with open('rerank_' + opt.output, 'w') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=['ID', 'Rank'])
+            writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
             writer.writeheader()
-            writer.writerows(results_rerank)
+
+            for r in results_rerank:
+                writer.writerow(r)
             
         mAP = final_eval.eval('gpu_' + opt.output, opt.gt)
-        print("mAP(with default dot product) {:.2%}: ", mAP)
+        print("mAP(with default dot product) {:.2%}: ".format(mAP))
 
         mAP = final_eval.eval('rerank_' + opt.output, opt.gt)
-        print("mAP(with reranking strategic): {:.2%}: ", mAP)
+        print("mAP(with reranking strategic): {:.2%}: ".format(mAP))
 
         return
     

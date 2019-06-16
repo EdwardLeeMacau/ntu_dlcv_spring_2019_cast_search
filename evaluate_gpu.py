@@ -108,6 +108,7 @@ def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name) 
       - result: 
     """
     result = []
+    cast_feature, candidate_feature = torch.Tensor(cast_feature).cuda(), torch.Tensor(candidate_feature).cuda()
 
     for i in range(cast_feature.shape[0]):
         index = evaluate(cast_feature[i], None, None, candidate_feature, None, None)

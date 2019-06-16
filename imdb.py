@@ -152,23 +152,23 @@ class IMDbFolderLoader(Dataset):
         self.candidates = pd.read_json(os.path.join(self.movie_path, 'candidate.json'), orient='index', typ='series').reset_index() 
         self.casts      = pd.read_json(os.path.join(self.movie_path, 'cast.json'), orient='index', typ='series') .reset_index()
         self.images     = pd.concat((self.candidates, self.casts), axis=0, ignore_index=True)
-        
+
     def __len__(self):
         return self.images.shape[0]
 
     def __getitem__(self, index):
-
         # --------------------------------------------- #
         # To Read the images:                           #
         #   Output dimension: (channel, height, width)  #
         # --------------------------------------------- #
-        image_path, cast = self.images.iat[index, 1], self.images.iat[index, 2]
+        image_path, cast = self.images.iat[index, 0], self.images.iat[index, 1]
+        image_path = os.path.join(os.path.basename(os.path.dirname(image_path)), os.path.basename(image_path))
         image = Image.open(os.path.join(self.movie_path, image_path))
 
         if self.transform:
             image = self.transform(image)
 
-        return image
+        return image, 0
         
 def collate_fn(batch):
     """
