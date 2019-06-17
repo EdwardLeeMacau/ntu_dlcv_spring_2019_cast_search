@@ -36,17 +36,16 @@ from torch.utils.data import DataLoader, Dataset
 import utils
 
 class IMDbTrainset(Dataset):
-    def __init__(self, movie_path, feature_path, label_path, mode, cast_image=True, keep_others=True, transform=None, debug=False):
-        assert (movie_path is not None), "movie_path is needed for IMDbDataset"
-        assert ((mode == 'classify') or (mode == 'features') or (mode == 'faces')), "The parameter 'mode' must be 'classify', 'feature' or 'faces'"
-        assert (not (mode == 'features') or (cast_image)), "Cast images must be loaded in dataset if mode is 'features'"
-
-        self.movie_path = movie_path
-        self.root_path  = os.path.dirname(self.movie_path)
+    def __init__(self, movie_path, feature_path, label_path, mode, transform=None, debug=False):
+        assert ((movie_path is not None) or (feature_path is not None)), "movie_path or feature_path is needed for IMDbDataset"
+        assert ((mode == 'classify') or (mode == 'features')), "The parameter 'mode' must be 'classify' or 'feature'"
+        
+        self.movie_path   = movie_path
+        self.feature_path = feature_path
+        # self.label_path   = label_path
+        self.root_path    = os.path.dirname(self.movie_path)
         
         self.mode = mode
-        self.keep_others = keep_others
-        self.cast_image  = cast_image
         self.debug = debug
 
         self.transform = transform
@@ -58,24 +57,22 @@ class IMDbTrainset(Dataset):
                                   for filename in self.movies]
 
         # Read as pandas.DataFrame and make it
-        self.candidates = pd.concat(self.candidate_json, axis=0, keys=self.movies).reset_index()
-        self.casts      = pd.concat(self.cast_json, axis=0, keys=self.movies).reset_index()
+#        self.candidates = pd.concat(self.candidate_json, axis=0, keys=self.movies).reset_index()
+#        self.casts      = pd.concat(self.cast_json, axis=0, keys=self.movies).reset_index()
 
-        if not keep_others:
-            self.candidates = self.candidates[self.candidates[0] != "others"]
-
-        # Add 'others' with the label query table only, don't add to image query table
-        if cast_image:
-            self.images = pd.concat((self.candidates, self.casts), axis=0, ignore_index=True)
-        
-        if keep_others:
+        # add "others" label to self.
+        if self.mode == 'classify':
             num_casts = self.casts.shape[0]
-            self.casts.loc[num_casts] = ['others', 'no_others_exists.jpg', 'others']
+            self.casts.loc[num_casts] = ['others', 'no_exist_others.jpg', 'others']
 
         self.classes = list(self.casts['level_0'])
 
+        if self.mode == 'features':
+            self.images = pd.concat((self.candidates, self.casts), axis=0, ignore_index=True)
+        
         # print(self.candidates.columns)  # ['level_0', 'level_1', 0]
-        # print('level_0 :\n', self.candidates[self.candidates[0] == 'others')
+        # print('level_0 :\n', self.candidates[self.candidates[0] == 'others'])    # 15451 labels of imgs are "others"
+
 
         # Total images in dataset
         # print("Total candidates in dataset: {}".format(self.candidates.shape))
@@ -83,16 +80,113 @@ class IMDbTrainset(Dataset):
         # print("Total casts in dataset:      {}\n".format(self.casts.shape))
         # print("Total casts in unique: {}".format(self.casts.shape))
 
+        # print("self.candidates :", self.candidates)
+        # print("self.casts :", self.casts)
+
     @property
     def num_casts(self):
         return self.casts.shape[0]
 
     def __len__(self):
-        if self.cast_image:
+        if self.mode == 'classify':
+            return self.candidates.shape[0]
+
+        if self.mode == 'features':
             return self.images.shape[0]
 
+    def __getitem__(self, index):
+        # Get 1 image and label in mode 'classify'
+        if self.mode == 'classify':
+            image_path, cast = self.candidates.iat[index, 1], self.candidates.iat[index, 2]
+        
+        # Get 1 image, directory, cast in mode 'features'
+        if self.mode == 'features':
+            image_path = self.images.iat[index, 1]
+
+        # ---------------------------------------------------
+        # To Read the images
+        # ---------------------------------------------------
+        image = Image.open(os.path.join(self.root_path, image_path))
+
+        # ---------------------------------------------------
+        # Features Output dimension: (feature_dim)
+        # Images Output dimension:   (channel, height, width)
+        # ---------------------------------------------------
+        if self.transform:
+            image = self.transform(image)
+
+        # string label >> int label
+        if self.mode == 'classify':
+            label_mapped = self.casts.index[self.casts[0] == cast].to_list()[0] # total : 1 element 
+        
+            if self.debug:
+                print("label_mapped : {} <--> {}".format(label_mapped, cast))
+        
+        if self.mode == 'features':
+            return image
+
+        return image, label_mapped
+
+class TripletDataset(Dataset):
+    def __init__(self, root_path, data_path, moviename, mode='classify', keep_others=True, transform=None, debug=False):
+        
+        self.root_path = root_path  # IMDb
+        self.data_path = data_path  # IMDb/train
+        self.moviename = moviename
+        self.mode = mode
+        self.keep_others = keep_others
+        self.debug = debug
+
+        self.transform = transform
+        
+        self.movies = os.listdir(self.data_path)
+        
+#        data_path = 'IMDb/train'
+#        moviename = 'tt6518634'
+#        cast/"
+        # Read json as pandas.DataFrame and divide candidates and others
+        candidate_json = pd.read_json(os.path.join(data_path, moviename, 'candidate.json'),
+                                           orient='index', typ='series').reset_index()
+        if keep_others:
+            self.candidates = candidate_json[candidate_json[0] != "others"]
+            self.others = candidate_json[candidate_json[0] == "others"]
+        else:
+            self.candidates = candidate_json
+            
+        self.casts = pd.read_json(os.path.join(data_path, moviename, 'cast.json'),
+                                           orient='index', typ='series') .reset_index()
+        num_casts = self.casts.shape[0]
+        if keep_others:
+            self.casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
+
+        if self.mode == 'features':
+            self.images = pd.concat((self.candidates, self.casts), axis=0, ignore_index=True)
+
+#        self.classes = list(self.casts[0])
+
+        # print(self.candidates.columns)  # ['level_0', 'level_1', 0]
+        # print('level_0 :\n', self.candidates[self.candidates[0] == 'others'])    # 15451 labels of imgs are "others"
+
+
+        # Total images in dataset
+        # print("Total candidates in dataset: {}".format(self.candidates.shape))
+        # Without "others"
+        # print("Total casts in dataset:      {}\n".format(self.casts.shape))
+        # print("Total casts in unique: {}".format(self.casts.shape))
+
+        # print("self.candidates :", self.candidates)
+        # print("self.casts :", self.casts)
+
+    @property
+    def num_casts(self):
+        return self.casts.shape[0]
+
+    def __len__(self):
         if self.mode == 'classify' or self.mode == 'faces':
             return self.candidates.shape[0]
+
+        if self.mode == 'features':
+            return self.images.shape[0]
 
     def __getitem__(self, index):
         # -------------------------------------------------
@@ -102,23 +196,26 @@ class IMDbTrainset(Dataset):
         #   Faces: get 1
         #     get 1 image, label is 1 if it contains a face
         #   Features:
-        #     get 1 image only. 
+        #     get 1 image only.
         # -------------------------------------------------
-        if self.cast_image:
-            image_path, cast = self.images.iat[index, 1], self.images.iat[index, 2]
+        if self.mode == 'classify':
+            image_path, cast = self.candidates.iat[index, 0], self.candidates.iat[index, 1]
 
-        elif self.mode == 'classify' or self.mode == 'faces':
-            image_path, cast = self.candidates.iat[index, 1], self.candidates.iat[index, 2]
+        if self.mode == 'faces':
+            image_path, cast = self.candidates.iat[index, 0], self.candidates.iat[index, 1]
+
+        if self.mode == 'features':
+            image_path = self.images.iat[index, 0]
 
         # ---------------------------------------------------
         # To Read the images
         # ---------------------------------------------------
         image = Image.open(os.path.join(self.root_path, image_path))
 
-        # ------------------------------------------------- # 
-        # Label Output dimension:  (1)                      #
-        # Images Output dimension: (channel, height, width) #
-        # ------------------------------------------------- #
+        # ---------------------------------------------------
+        # Features Output dimension: (feature_dim)
+        # Images Output dimension:   (channel, height, width)
+        # ---------------------------------------------------
         if self.transform:
             image = self.transform(image)
 
@@ -136,89 +233,158 @@ class IMDbTrainset(Dataset):
                 print("label_mapped : {} <--> {}".format(label_mapped, cast))
             
         if self.mode == 'features':
-            label_mapped = self.casts.index[self.casts[0] == cast].to_list()[0]
-
-            if self.debug:
-                print("label_mapped : {} <--> {}".format(label_mapped, cast))
+            return image
 
         return image, label_mapped
+    
+class CastDataset(Dataset):
+    def __init__(self, root_path, data_path, mode='classify', keep_others=True, transform=None, debug=False):
+        
+        self.root_path = root_path  # IMDb
+        self.data_path = data_path  # IMDb/train 
+        self.mode = mode
+        self.keep_others = keep_others
+        self.debug = debug
 
-class IMDbFolderLoader(Dataset):
-    def __init__(self, movie_path, transform=None, debug=False):
-        self.movie_path = movie_path
-        self.transform  = transform
-
-        # Read as pandas.DataFrame
-        self.candidates = pd.read_json(os.path.join(self.movie_path, 'candidate.json'), orient='index', typ='series').reset_index() 
-        self.casts      = pd.read_json(os.path.join(self.movie_path, 'cast.json'), orient='index', typ='series') .reset_index()
-        self.images     = pd.concat((self.candidates, self.casts), axis=0, ignore_index=True)
+        self.transform = transform
+        
+        self.movies = os.listdir(self.data_path)
+        
+#        data_path = 'IMDb/train'
+#        moviename = 'tt6518634'
+#        cast/"
+        
+    @property
+    def num_casts(self):
+        
+        return self.casts.shape[0]
 
     def __len__(self):
-        return self.images.shape[0]
+        
+        return len(self.movies)
+
 
     def __getitem__(self, index):
-        # --------------------------------------------- #
-        # To Read the images:                           #
-        #   Output dimension: (channel, height, width)  #
-        # --------------------------------------------- #
-        image_path, cast = self.images.iat[index, 0], self.images.iat[index, 1]
-        image_path = os.path.join(os.path.basename(os.path.dirname(image_path)), os.path.basename(image_path))
-        image = Image.open(os.path.join(self.movie_path, image_path))
-
-        if self.transform:
-            image = self.transform(image)
-
-        return image, 0
         
-def collate_fn(batch):
-    """
-      To define a function that reads the video by batch.
- 
-      Params:
-      - batch: 
-          In pytorch, dataloader generate batch of traindata by this way:
-            `self.collate_fn([self.dataset[i] for i in indices])`
-          
-          In here, batch means `[self.dataset[i] for i in indices]`
-          It's a list contains (datas, labels)
+        moviename = self.movies[index]
+        # Read json as pandas.DataFrame and divide candidates and others
+        candidate_json = pd.read_json(os.path.join(self.data_path, moviename, 'candidate.json'),
+                                           orient='index', typ='series').reset_index()
+        if self.keep_others:
+            others = candidate_json[candidate_json[0] == "others"]
+            rn = torch.randint(0, len(others), (1,)).tolist()[0]
+        
+        casts = pd.read_json(os.path.join(self.data_path, moviename, 'cast.json'),
+                                           orient='index', typ='series').reset_index()
+        num_casts = casts.shape[0]
+        if self.keep_others:
+            casts.loc[num_casts] = [others.iat[rn,0], 'others']
+        
+        # -------------------------------------------------
+        # Mode:
+        #   Classify: 
+        #     get 1 image and 1 label
+        #   Features:
+        #     get 1 image only.
+        # -------------------------------------------------
+        
+        images = torch.tensor([])
+        labels = []
+        for idx in range(num_casts+1):
+            if self.mode == 'classify':
+                image_path, cast = casts.iat[idx, 0], casts.iat[idx, 1]
 
-      Return:
-      - batch: the input tensors in shape (batch, c, h, w)
-    """
-    # ---------------------------------
-    # batch[i][j]
-    #   the type of batch[i] is tuple
-    # 
-    #   i=(0, size) means the batchsize
-    #   j=(0, 1) means the data / label
-    # ---------------------------------
+            if self.mode == 'features':
+                image_path = self.images.iat[idx, 0]
+            # ---------------------------------------------------
+            # To Read the images
+            # ---------------------------------------------------
+            image = Image.open(os.path.join(self.root_path, image_path))
     
-    images = torch.Tensor([x[0] for x in batch])
-    
-    labels = None
-    if batch[0][1] is not None: # If labels exists
-        labels = torch.cat([x[1].unsqueeze(0) for x in batch], dim=0)
-    
-    return images, labels
+            # ---------------------------------------------------
+            # Features Output dimension: (feature_dim)
+            # Images Output dimension:   (channel, height, width)
+            # ---------------------------------------------------
+            if self.transform:
+                image = self.transform(image)
+            images = torch.cat((images,image.unsqueeze(0)), dim=0)
 
-def dataloader_unittest(path, debug=False):
-    print("Classify setting (keep others): ")
+            # string label >> int label
+            if self.mode == 'classify':
+                label_mapped = casts.index[casts[0] == cast] # total : 1 element 
+            
+                if self.debug:
+                    print("label_mapped : {} <--> {}".format(label_mapped, cast))
+            
+                labels.append(label_mapped)
+            
+        if self.mode == 'features':
+            return images
+        
+        print(num_casts)
+        print(images.size())
+        print(labels)
+        
+        return images, labels, moviename
+
+def load_candidate(root_path, datapath, bsize):
     
-    dataset = IMDbTrainset(
-        movie_path = path,
-        feature_path = None,
-        label_path = "./IMDb/val_GT.json",
+    movie_list = os.listdir(datapath)
+    all_dataset = {}
+    all_loader = {}
+    info = {}
+    info['len'] = []
+    transform1 = transforms.Compose([
+                        transforms.Resize((448,448), interpolation=3),
+                        transforms.ToTensor(),
+                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                             std=[0.229, 0.224, 0.225])
+                                             ])
+    if datapath == 'IMDb/train':
+        keep_other = True
+        shuf = True
+    else:
+        keep_other = False
+        shuf = False
+    
+    for mov in movie_list:
+        num_cast = len(os.listdir(datapath + '/' + mov))
+        all_dataset[mov] = TripletDataset(root_path,
+                   datapath,
+                   mov,
+                   mode='classify',
+                   keep_others=keep_other,
+                   transform=transform1,
+                   debug=False)
+        all_loader[mov] = DataLoader(all_dataset[mov],
+                            batch_size=16-num_cast,
+                            shuffle=shuf,
+                            num_workers=0)
+        info['len'].append(len(all_dataset[mov]))
+    
+    return all_dataset, all_loader
+
+
+def dataloader_unittest(debug=False):
+    print("Classify setting: ")
+#    (self, data_path, moviename, mode='classify', keep_others=True, transform=None, debug=False):
+        
+    dataset = TripletDataset(
+        data_path = "./IMDb/train",
+        moviename = "tt6518634",
         mode = 'classify',
-        cast_image=False,
-        keep_others=True,
-        debug = debug,
+        debug = True,
         transform = transforms.Compose([
-        transforms.Resize((384,192), interpolation=3),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ]))
+                transforms.Resize((448,448), interpolation=3),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+                ]))
 
-    dataloader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=0)
+    dataloader = DataLoader(dataset,
+                            batch_size=8,
+                            shuffle=False,
+                            num_workers=0)
 
     print("Length of dataset: {}".format(len(dataset)))
 
@@ -233,47 +399,15 @@ def dataloader_unittest(path, debug=False):
         #     print('dataloader unitest finished, has 198("others") in labels.')
         break
 
-    # ------------------------------------------------------------------------------ #
-
-    print("Classify setting (remove others): ")
-
-    dataset = IMDbTrainset(
-        movie_path = path,
-        feature_path = None,
-        label_path = "./IMDb/val_GT.json",
-        mode = 'classify',
-        cast_image=True,
-        keep_others=False,
-        debug = debug,
-        transform = transforms.Compose([
-            transforms.Resize((384,192), interpolation=3),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ]))
-
-    dataloader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=0)
-
-    print("Length of dataset: {}".format(len(dataset)))
-
-    for index, (image, label) in enumerate(dataloader, 1):
-        print("Image.shape: {}".format(image.shape))
-        print("Label.shape: {}".format(label.shape))
-        # print("Label: {}".format(label))
-        print()
-
-        break
-
-    # ------------------------------------------------------------------------------ #
-                                                                                                                                                        
+    #################################################################################
+'''
     print("Features setting: ")
 
     dataset = IMDbTrainset(
-        movie_path = path,
+        movie_path = "./IMDb/val",
         feature_path = None,
         label_path = "./IMDb/val_GT.json",
-        mode='features',
-        keep_others=True,
-        cast_image=True,
+        mode = 'features',
         debug = debug,
         transform = transforms.Compose([
         transforms.Resize((384,192), interpolation=3),
@@ -285,41 +419,17 @@ def dataloader_unittest(path, debug=False):
 
     print("Length of dataset: {}".format(len(dataset)))
 
-    for index, (image, _) in enumerate(dataloader, 1):
-        print(image.size())
+    for index, (image) in enumerate(dataloader, 1):
         print("Image.shape: {}".format(image.shape))
+        # print("Label.shape: {}".format(label.shape))
+        # print("Label: {}".format(label))
         print()
 
+        # if "others" in label:
+        # if 198 in label:   # "others" mapped to 198
+        #     print('dataloader unitest finished, has 198("others") in labels.')
         break
-
-    # ------------------------------------------------------------------------------ #
-    print("Faces setting: ")
-
-    dataset = IMDbTrainset(
-        movie_path = path,
-        feature_path = None,
-        label_path = "./IMDb/val_GT.json",
-        mode = 'faces',
-        cast_image=False,
-        debug = debug,
-        transform = transforms.Compose([
-        transforms.Resize((384,192), interpolation=3),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ]))
-
-    dataloader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=0)
-
-    print("Length of dataset: {}".format(len(dataset)))
-
-    for index, (image, label) in enumerate(dataloader, 1):
-        print("Image.shape: {}".format(image.shape))
-        print("Label.shape: {}".format(label.shape))
-        print("Label: {}".format(label))
-        print()
-        break
-
+'''
 
 if __name__ == "__main__":
-    path = "/media/disk1/EdwardLee/dataset/IMDb/val"
-    dataloader_unittest(path, True)
+    dataloader_unittest()

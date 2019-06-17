@@ -25,7 +25,7 @@ from torch.autograd import Variable
 from torch.nn import init
 from torchvision import models
 
-import pretrainedmodels
+#import pretrainedmodels
 
 
 def weights_init_kaiming(m):
@@ -270,7 +270,7 @@ class PCB(nn.Module):
         super(PCB, self).__init__()
 
         self.debug = debug
-        self.part  = 6 # We cut the pool5 to 6 parts
+        self.part = 6 # We cut the pool5 to 6 parts
         model_ft = models.resnet50(pretrained=True)
         self.model = model_ft
         self.avgpool = nn.AdaptiveAvgPool2d((self.part,1))
@@ -364,6 +364,19 @@ class PCB_test(nn.Module):
             print()
 
         return y
+
+class feature_extractor(nn.Module):
+    def __init__(self):
+        super(feature_extractor, self).__init__()
+        resnet = models.resnet50(pretrained=True)
+        
+        self.resnet_layer = nn.Sequential(*list(resnet.children())[:-2],
+                            nn.AdaptiveAvgPool2d(output_size=(1, 1))
+                            )
+
+    def forward(self, input_data):
+        feature = self.resnet_layer(input_data)
+        return feature
 
 def model_structure_unittest():
     """ Debug model structure """
