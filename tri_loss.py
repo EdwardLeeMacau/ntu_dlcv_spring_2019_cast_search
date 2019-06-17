@@ -4,7 +4,8 @@ import torch.nn as nn
 criterion = nn.TripletMarginLoss(margin=2)
 
 def triplet_loss(inputs, labels, cast_num):
-    candid_num = 15-cast_num
+    bs = inputs.size()[0]-1
+    candid_num = bs-cast_num
     x_a = inputs[cast_num+1:]
     x_p = inputs[:cast_num]
     loss = 0.0
@@ -18,9 +19,9 @@ def triplet_loss(inputs, labels, cast_num):
             num_n = cast_num
             
         x_n = inputs[num_n]
-        print('tri_loss a = %d, p = %d, n = %d' 
-              % (cand_label, labels[num_p], labels[num_n]))
+#        print('tri_loss a = %d, p = %d, n = %d' 
+#              % (cand_label, labels[num_p], labels[num_n]))
         loss += criterion(x_a[i],x_p[num_p],x_n)
-        loss /= candid_num
+    loss /= candid_num
         
     return loss
