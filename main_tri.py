@@ -65,20 +65,17 @@ def train(castloader, candloader, model, scheduler, optimizer, epoch, device, op
                 print('Epoch [%d/%d] Movie [%d/%d] Iter [%d/%d] Loss: %.4f'
                       % (epoch, opt.epochs, i, len(castloader),
                          j, len(candloader[mov]), running_loss/((j+1)*(bs+1))))
-                break
         movie_loss += running_loss/len(candloader[mov])
-        if i == 5:
-            break
     return model, movie_loss/len(castloader)
                 
             
-def val(castloader, candloader, model, epoch, opt, device):
+def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device):
     
     model.eval()
     results = []
     with torch.no_grad():
         
-        for i, (cast, label_cast, mov) in enumerate(castloader):
+        for i, (cast, label_cast, mov) in enumerate(castloader):  #label_cast 1*n tensor
             mov = mov[0]
             cast = cast.to(device)
 #            cast_size = 1, num_cast+1, 3, 448, 448
@@ -93,13 +90,19 @@ def val(castloader, candloader, model, epoch, opt, device):
                 out = model(cand)
                 out = out.detach().cpu().view(-1,2048)
                 cand_out = torch.cat((cand_out,out), dim=0)
-            
+                
             print('[Validating] ',mov,'processed...',cand_out.size()[0])
             
             cast_feature = cast_out.numpy()
-            cast_name = np.array(label_cast[0])
             candidate_feature = cand_out.numpy()
-            candidate_name = np.array(list(range(cand_out.size()[0])))
+            cast_name = cast_data.casts
+            cast_name = np.array([cast_name.iat[x,0][-23:][:-4] 
+                                        for x in range(len(cast_name[0])-1)])
+            candidate_name = cand_data[mov].candidates
+            candidate_name = np.array([candidate_name.iat[x,0][-18:][:-4] 
+                                        for x in range(len(candidate_name[0]))])
+#            print(cast_name)
+#            print(candidate_name)
             result = predicting(cast_feature, cast_name, candidate_feature, candidate_name)   
             results.extend(result)
     with open('result.csv','w') as csvfile:
@@ -185,7 +188,7 @@ def main(opt):
         if epoch % opt.save_interval == 0:
             save_network(model, epoch, device, opt)
         
-        val_mAP = val(val_cast, val_cand, model, epoch, opt, device)
+        val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, epoch, opt, device)
         
         print('Epoch [%d/%d] TrainingLoss: %.4f, Valid_mAP: %.2f'
                       % (epoch, opt.epochs,training_loss,val_mAP))

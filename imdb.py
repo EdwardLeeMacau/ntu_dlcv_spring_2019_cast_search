@@ -156,8 +156,8 @@ class TripletDataset(Dataset):
         self.casts = pd.read_json(os.path.join(data_path, moviename, 'cast.json'),
                                            orient='index', typ='series') .reset_index()
         num_casts = self.casts.shape[0]
-        if keep_others:
-            self.casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
+#        if keep_others:
+        self.casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
 
         if self.mode == 'features':
             self.images = pd.concat((self.candidates, self.casts), axis=0, ignore_index=True)
@@ -221,7 +221,9 @@ class TripletDataset(Dataset):
 
         # string label >> int label
         if self.mode == 'classify':
-            label_mapped = self.casts.index[self.casts[0] == cast].to_list()[0] # total : 1 element 
+            
+            label_mapped = self.casts.index[self.casts[0] == cast].tolist()[0] 
+            # total : 1 element 
         
             if self.debug:
                 print("label_mapped : {} <--> {}".format(label_mapped, cast))
@@ -276,9 +278,12 @@ class CastDataset(Dataset):
         
         casts = pd.read_json(os.path.join(self.data_path, moviename, 'cast.json'),
                                            orient='index', typ='series').reset_index()
+        self.casts = casts
         num_casts = casts.shape[0]
         if self.keep_others:
             casts.loc[num_casts] = [others.iat[rn,0], 'others']
+        else:
+            casts.loc[num_casts] = ['no_this_img.jpg', 'others']
         
         # -------------------------------------------------
         # Mode:
@@ -289,8 +294,10 @@ class CastDataset(Dataset):
         # -------------------------------------------------
         
         images = torch.tensor([])
-        labels = []
-        for idx in range(num_casts+1):
+        labels = torch.tensor([],dtype=torch.long)
+        if self.keep_others:
+            num_casts += 1
+        for idx in range(num_casts):
             if self.mode == 'classify':
                 image_path, cast = casts.iat[idx, 0], casts.iat[idx, 1]
 
@@ -311,20 +318,21 @@ class CastDataset(Dataset):
 
             # string label >> int label
             if self.mode == 'classify':
-                label_mapped = casts.index[casts[0] == cast] # total : 1 element 
-            
+                label_mapped = casts.index[casts[0] == cast].tolist() # total : 1 element 
+                label_mapped = torch.tensor(label_mapped)
+#                print(label_mapped)
                 if self.debug:
                     print("label_mapped : {} <--> {}".format(label_mapped, cast))
             
-                labels.append(label_mapped)
+                labels = torch.cat((labels,label_mapped),dim=0)
             
         if self.mode == 'features':
             return images
         
-        print(num_casts)
-        print(images.size())
-        print(labels)
-        
+#        print(num_casts)
+#        print(images.size())
+#        print(labels)
+#        print(moviename)
         return images, labels, moviename
 
 def load_candidate(root_path, datapath, bsize):
@@ -348,7 +356,8 @@ def load_candidate(root_path, datapath, bsize):
         shuf = False
     
     for mov in movie_list:
-        num_cast = len(os.listdir(datapath + '/' + mov))
+        num_cast = len(os.listdir(datapath + '/' + mov + '/' + 'cast'))
+#        print(mov ,'--', num_cast)
         all_dataset[mov] = TripletDataset(root_path,
                    datapath,
                    mov,
@@ -357,7 +366,7 @@ def load_candidate(root_path, datapath, bsize):
                    transform=transform1,
                    debug=False)
         all_loader[mov] = DataLoader(all_dataset[mov],
-                            batch_size=16-num_cast,
+                            batch_size=15-num_cast,
                             shuffle=shuf,
                             num_workers=0)
         info['len'].append(len(all_dataset[mov]))
