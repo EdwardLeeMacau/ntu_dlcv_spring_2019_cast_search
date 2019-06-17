@@ -7,6 +7,7 @@ Created on Mon Jun 17 07:55:44 2019
 import torch
 import argparse
 import os
+import csv
 from torch.optim import lr_scheduler 
 import numpy as np
 from model import feature_extractor
@@ -15,6 +16,7 @@ from tri_loss import triplet_loss
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from evaluate_rerank import predict_1_movie as predicting
+import final_eval
 
 y = {
     'train_loss': [],
@@ -29,83 +31,91 @@ def train(castloader, candloader, model, scheduler, optimizer, epoch, device, op
     movie_loss = 0.0
     
     for i, (cast, label_cast, mov) in enumerate(castloader):
-        
-        print('cast size' , cast.size())
+        mov = mov[0]
+#        print('cast size' , cast.size())
+#        print(label_cast, type(label_cast))
 #            cast_size = 1, num_cast+1, 3, 448, 448
-        num_cast = len(label_cast)-1
+        num_cast = len(label_cast[0])-1
         
         running_loss = 0.0
         
         for j, (cand, label_cand) in enumerate(candloader[mov]):
             
             bs = cand.size()[0]
-            print('candidate size : ', cand.size())
+#            print('candidate size : ', cand.size())
+#            print(label_cand, type(label_cand))
 #               cand_size = bs - 1 - num_cast, 3, 448, 448
             optimizer.zero_grad()
             
             inputs = torch.cat((cast.squeeze(0),cand), dim=0)
-            label = torch.cat((label_cast, label_cand))
-            
+            label = torch.cat((label_cast[0],label_cand), dim=0).tolist()
+#            print(label)
             inputs = inputs.to(device)
             
-            print('input size :', inputs.size())  # 16,3,448,448
+#            print('input size :', inputs.size())  # 16,3,448,448
             
             out = model(inputs)
-            
             loss = triplet_loss(out, label, num_cast)
             loss.backward()
             optimizer.step()
             
             running_loss += loss.item()*bs
             
-            if j % 5 == 0:
+            if j % 10 == 0:
                 print('Epoch [%d/%d] Movie [%d/%d] Iter [%d/%d] Loss: %.4f'
                       % (epoch, opt.epochs, i, len(castloader),
-                         j, len(candloader[mov]), running_loss/(j*bs)))
-        
+                         j, len(candloader[mov]), running_loss/((j+1)*(bs+1))))
+                break
         movie_loss += running_loss/len(candloader[mov])
-        
+        if i == 5:
+            break
     return model, movie_loss/len(castloader)
                 
             
-def val(castloader, candloader, model, epoch, opt):
+def val(castloader, candloader, model, epoch, opt, device):
     
     model.eval()
+    results = []
     with torch.no_grad():
         
-        for i, (cast, label_cast) in enumerate(castloader):
-        
+        for i, (cast, label_cast, mov) in enumerate(castloader):
+            mov = mov[0]
+            cast = cast.to(device)
 #            cast_size = 1, num_cast+1, 3, 448, 448
             cast_out = model(cast.squeeze(0))
             cast_out = cast_out.detach().cpu().view(-1,2048)
             
             cand_out = torch.tensor([])
             
-            for j, (cand, label_cand) in enumerate(candloader):
-                
+            for j, (cand, label_cand) in enumerate(candloader[mov]):
+                cand = cand.to(device)
     #               cand_size = bs - 1 - num_cast, 3, 448, 448
                 out = model(cand)
                 out = out.detach().cpu().view(-1,2048)
                 cand_out = torch.cat((cand_out,out), dim=0)
-#                labels.extend(label_cand)
-                
-            print(cand_out.size())
-#            print(labels)
+            
+            print('[Validating] ',mov,'processed...',cand_out.size()[0])
             
             cast_feature = cast_out.numpy()
-            cast_name = np.array(label_cast)
+            cast_name = np.array(label_cast[0])
             candidate_feature = cand_out.numpy()
-            candidate_name = np.array(list(range(len(candloader))))
+            candidate_name = np.array(list(range(cand_out.size()[0])))
             result = predicting(cast_feature, cast_name, candidate_feature, candidate_name)   
-        
+            results.extend(result)
+    with open('result.csv','w') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=['Id','Rank'])
+        writer.writeheader()
+        for r in results:
+            writer.writerow(r)
+    
+    mAP = final_eval.eval('result.csv', opt.csv_file)
 #        mAP = cal_map(cast_out, cand_out).cpu()
-        
-    return 
+    return mAP
 # --------------------------
 # -----  Save model  -------
 # --------------------------
-def save_network(network, epoch, device, num_fill=3):
-    save_path = os.path.join('./model', opt.name, 'net_{}.pth'.format(str(epoch).zfill(num_fill)))
+def save_network(network, epoch, device, opt, num_fill=3):
+    save_path = os.path.join(opt.mpath, 'net_{}.pth'.format(str(epoch).zfill(num_fill)))
     torch.save(network.cpu().state_dict(), save_path)
 
     if torch.cuda.is_available():
@@ -145,7 +155,7 @@ def main(opt):
                             batch_size=1,
                             shuffle=False,
                             num_workers=0)
-    val_cast_data = CastDataset(opt.dataroot, opt.trainset,
+    val_cast_data = CastDataset(opt.dataroot, opt.valset,
                                   mode='classify',
                                   keep_others=False,
                                   transform=transform1,
@@ -165,7 +175,7 @@ def main(opt):
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
     
 #    since = time.time()
-    
+    best_mAP = 0.0
     for epoch in range(opt.epochs +1):
         
         model, training_loss = train(train_cast, train_cand,
@@ -173,13 +183,20 @@ def main(opt):
                                      epoch, device, opt)
         
         if epoch % opt.save_interval == 0:
-            save_network(model, epoch, device)
+            save_network(model, epoch, device, opt)
         
-        val_mAP = val(val_cast, val_cand,
-                      model, epoch, opt)
+        val_mAP = val(val_cast, val_cand, model, epoch, opt, device)
         
-#        y['val_mAP'].append(val_mAP)
+        print('Epoch [%d/%d] TrainingLoss: %.4f, Valid_mAP: %.2f'
+                      % (epoch, opt.epochs,training_loss,val_mAP))
 
+        if val_mAP > best_mAP:
+            save_path = os.path.join(opt.mpath, 'net_best.pth')
+            torch.save(model.cpu().state_dict(), save_path)
+
+            if torch.cuda.is_available():
+                model.to(device)
+            val_mAP = best_mAP
         
 if __name__ == '__main__':
     
@@ -202,11 +219,12 @@ if __name__ == '__main__':
     parser.add_argument('--b2', default=0.999, type=float)
     # I/O Setting 
     parser.add_argument('--outdir', default='PCB', type=str, help='output model name')
-    parser.add_argument('--mpath',      default='p2_models', help='folder to output images and model checkpoints')
+    parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
     parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
     parser.add_argument('--dataroot', default='IMDb', type=str, help='Directory of dataroot')
     parser.add_argument('--trainset', default='IMDb/train', type=str, help='Directory of training set.')
     parser.add_argument('--valset', default='IMDb/val', type=str, help='Directory of validation set')
+    parser.add_argument('--csv_file', default='IMDb/val_GT.json', type=str, help='Directory of training set.')
     # Device Setting
     parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
     parser.add_argument('--threads', default=0, type=int)

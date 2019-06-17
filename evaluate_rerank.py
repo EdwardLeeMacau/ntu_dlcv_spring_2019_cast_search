@@ -130,15 +130,15 @@ def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, 
     g_g_distance = np.dot(candidate_feature, np.transpose(candidate_feature))
     
     final_distance = re_ranking(q_g_distance, q_q_distance, g_g_distance, k1=k1, k2=k2, lambda_value=lambda_value)
-
+#    print(candidate_name)
     result = []
     for j in range(final_distance.shape[0]):
         distance = final_distance[j]
         index = np.argsort(distance)
         
         cast_id = cast_name[j]
-        candidates = candidate_name[index]
-
+        candidates = candidate_name[index].tolist()
+        
         result.append({
             'Id': cast_id, 
             'Rank': ' '.join(candidates)
