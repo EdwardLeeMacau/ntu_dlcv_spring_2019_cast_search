@@ -193,8 +193,8 @@ class TripletDataset(Dataset):
         # Mode:
         #   Classify: 
         #     get 1 image and 1 label
-        #   Faces: get 1
-        #     get 1 image, label is 1 if it contains a face
+        #   Faces:
+        #     get 1 image, label is 1 if it contains a face else 0
         #   Features:
         #     get 1 image only.
         # -------------------------------------------------
@@ -335,20 +335,31 @@ class CastDataset(Dataset):
 #        print(moviename)
         return images, labels, moviename
 
-def load_candidate(root_path, datapath, bsize):
+def load_candidate(rootpath: str, datapath: str, bsize: int) -> (Dataset, DataLoader):
+    """
+      Load the movies in the dataset:
+
+      Params:
+      - root_path: the root of the dataset
+      - data_path: choose a set (train / val / test)
+      - bsize: 
+    """
+
+    # rootpath = os.path.dirname(datapath)
     
     movie_list = os.listdir(datapath)
     all_dataset = {}
     all_loader = {}
     info = {}
     info['len'] = []
-    transform1 = transforms.Compose([
-                        transforms.Resize((448,448), interpolation=3),
-                        transforms.ToTensor(),
-                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                             std=[0.229, 0.224, 0.225])
-                                             ])
-    if datapath == 'IMDb/train':
+    transform = transforms.Compose([
+        transforms.Resize((448,448), interpolation=3),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+    # if datapath == 'IMDb/train':
+    if 'train' in datapath:
         keep_other = True
         shuf = True
     else:
@@ -356,14 +367,13 @@ def load_candidate(root_path, datapath, bsize):
         shuf = False
     
     for mov in movie_list:
-        num_cast = len(os.listdir(datapath + '/' + mov + '/' + 'cast'))
-#        print(mov ,'--', num_cast)
-        all_dataset[mov] = TripletDataset(root_path,
+        num_cast = len(os.listdir(os.path.join(datapath, mov, 'cast')))
+        all_dataset[mov] = TripletDataset(rootpath,
                    datapath,
                    mov,
                    mode='classify',
                    keep_others=keep_other,
-                   transform=transform1,
+                   transform=transform,
                    debug=False)
         all_loader[mov] = DataLoader(all_dataset[mov],
                             batch_size=15-num_cast,

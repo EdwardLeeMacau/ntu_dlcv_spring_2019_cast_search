@@ -4,27 +4,37 @@ Created on Mon Jun 17 07:55:44 2019
 
 @author: Chun
 """
-import torch
 import argparse
-import os
 import csv
-from torch.optim import lr_scheduler 
+import os
+
 import numpy as np
-from model import feature_extractor
-from imdb import load_candidate, CastDataset
-from tri_loss import triplet_loss
-from torch.utils.data import DataLoader
+import torch
 import torchvision.transforms as transforms
-from evaluate_rerank import predict_1_movie as predicting
+from matplotlib import pyplot as plt
+from torch.optim import lr_scheduler
+from torch.utils.data import DataLoader
+
 import final_eval
+import utils
+from evaluate_rerank import predict_1_movie as predicting
+from imdb import CastDataset, load_candidate
+from model import feature_extractor
+from tri_loss import triplet_loss
 
-y = {
-    'train_loss': [],
-    'val_mAP': []
-    }
+plt.figure(figsize=(19.2, 10.8))
 
-def train(castloader, candloader, model, scheduler, optimizer, epoch, device, opt):
-    
+x_epoch = []
+y = {'train_loss': [], 'val_mAP': []}
+
+def train(castloader, candloader, model, scheduler, optimizer, epoch, device, opt) -> (torch.nn.Module, float):
+    """
+      Train the model with the triplet loss
+
+      Return:
+      - model:
+      - average_loss
+    """
     scheduler.step()
     model.train()
     
@@ -35,7 +45,7 @@ def train(castloader, candloader, model, scheduler, optimizer, epoch, device, op
 #        print('cast size' , cast.size())
 #        print(label_cast, type(label_cast))
 #            cast_size = 1, num_cast+1, 3, 448, 448
-        num_cast = len(label_cast[0])-1
+        num_cast = len(label_cast[0]) - 1
         
         running_loss = 0.0
         
@@ -61,15 +71,23 @@ def train(castloader, candloader, model, scheduler, optimizer, epoch, device, op
             
             running_loss += loss.item()*bs
             
-            if j % 10 == 0:
+            if j % opt.log_interval == 0:
                 print('Epoch [%d/%d] Movie [%d/%d] Iter [%d/%d] Loss: %.4f'
                       % (epoch, opt.epochs, i, len(castloader),
                          j, len(candloader[mov]), running_loss/((j+1)*(bs+1))))
-        movie_loss += running_loss/len(candloader[mov])
-    return model, movie_loss/len(castloader)
+        
+        movie_loss += running_loss / len(candloader[mov])
+
+    return model, movie_loss / len(castloader)
                 
             
-def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device):
+def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device, generated_csv='result.csv') -> float:
+    """
+      Validate the models
+
+      Return
+      - mAP: mAP value in target dataset.
+    """
     
     model.eval()
     results = []
@@ -91,7 +109,7 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
                 out = out.detach().cpu().view(-1,2048)
                 cand_out = torch.cat((cand_out,out), dim=0)
                 
-            print('[Validating] ',mov,'processed...',cand_out.size()[0])
+            print('[Validating] ', mov, 'processed...', cand_out.size()[0])
             
             cast_feature = cast_out.numpy()
             candidate_feature = cand_out.numpy()
@@ -105,15 +123,17 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
 #            print(candidate_name)
             result = predicting(cast_feature, cast_name, candidate_feature, candidate_name)   
             results.extend(result)
-    with open('result.csv','w') as csvfile:
+
+    with open(generated_csv,'w') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=['Id','Rank'])
         writer.writeheader()
         for r in results:
             writer.writerow(r)
     
-    mAP = final_eval.eval('result.csv', opt.csv_file)
-#        mAP = cal_map(cast_out, cand_out).cpu()
+    mAP = final_eval.eval(generated_csv, opt.csv_file)
+
     return mAP
+
 # --------------------------
 # -----  Save model  -------
 # --------------------------
@@ -126,21 +146,30 @@ def save_network(network, epoch, device, opt, num_fill=3):
 
     return
 
-# ------------------------------
-#    main function
-#    ---------------------------------
-    
+def draw_curve(x, y, save_path='train.jpg'):
+    plt.clf()
+    colors = ['bo-', 'ro-']
+
+    for index, (key, array) in enumerate(y.items()):
+        plt.subplot(1, 2, index)
+        plt.plot(x, array, colors[index], label=key)
+        plt.legend(loc=0)
+
+    plt.savefig(save_path)
+
+# ------------------- #
+#    main function    #
+# ------------------- # 
 def main(opt):
     
     os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu)
     device = torch.device("cuda:0")
     
     transform1 = transforms.Compose([
-                        transforms.Resize((448,448), interpolation=3),
-                        transforms.ToTensor(),
-                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                             std=[0.229, 0.224, 0.225])
-                                             ])
+        transforms.Resize((448,448), interpolation=3),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
     
     train_data, train_cand = load_candidate(opt.dataroot,
                                             opt.trainset,
@@ -148,6 +177,9 @@ def main(opt):
     val_data, val_cand = load_candidate(opt.dataroot,
                                             opt.valset,
                                             opt.batchsize)
+
+    # train_data, train_cand = load_candidate(opt.trainset, opt.batchsize)
+    # val_data, val_cand     = load_candidate(opt.valset, opt.batchsize)
     
     train_cast_data = CastDataset(opt.dataroot, opt.trainset,
                                   mode='classify',
@@ -173,14 +205,14 @@ def main(opt):
     
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=opt.lr,
-                                 betas=(opt.b1, opt.b2))  
+                                 betas=(opt.b1, opt.b2),
+                                 weight_decay=opt.weight_decay)  
       
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
     
-#    since = time.time()
     best_mAP = 0.0
-    for epoch in range(opt.epochs +1):
-        
+
+    for epoch in range(1, opt.epochs + 1):
         model, training_loss = train(train_cast, train_cand,
                                      model, scheduler, optimizer,
                                      epoch, device, opt)
@@ -190,8 +222,12 @@ def main(opt):
         
         val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, epoch, opt, device)
         
+        draw_graphs(x_epoch, y)
+        y['train_loss'].append(training_loss)
+        y['val_mAP'].append(val_mAP)
+        
         print('Epoch [%d/%d] TrainingLoss: %.4f, Valid_mAP: %.2f'
-                      % (epoch, opt.epochs,training_loss,val_mAP))
+                      % (epoch, opt.epochs, training_loss, val_mAP))
 
         if val_mAP > best_mAP:
             save_path = os.path.join(opt.mpath, 'net_best.pth')
@@ -237,8 +273,11 @@ if __name__ == '__main__':
     parser.add_argument('--save_interval', default=1, type=int)
     
     opt = parser.parse_args()
+
+    # Modify the params
+    opt.dataroot = os.path.dirname(opt.trainset)
     
+    # Show the params
+    utils.details(opt)
+
     main(opt)
-                
-                
-                
