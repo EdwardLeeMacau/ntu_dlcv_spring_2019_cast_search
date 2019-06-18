@@ -34,8 +34,7 @@ if __name__ == '__main__':
     if not os.path.isdir(dest_root):
         os.makedirs(dest_root, exist_ok=True)
 
-    movies = os.listdir(source_root)
-
+    movies = sorted(os.listdir(source_root))
     for movie in tqdm(movies):
         source_root = os.path.join(args.source_root, movie)
 
@@ -43,12 +42,18 @@ if __name__ == '__main__':
             os.mkdir(os.path.join(dest_root, movie))
 
         for subfolder in os.listdir(source_root):
-            if not os.path.isdir(os.path.join(dest_root, subfolder)):
-                os.mkdir(os.path.join(dest_root, subfolder))
+            if not os.path.isdir(os.path.join(source_root, subfolder)):
+                continue
             
-            for image_name in os.listdir(os.path.join(source_root, subfolder)):
-                print("Processing\t{}".format(os.path.join(source_root, subfolder, image_name)))
+            if not os.path.exists(os.path.join(dest_root, movie, subfolder)):
+                os.mkdir(os.path.join(dest_root, movie, subfolder))
+            
+            for image_name in tqdm(sorted(os.listdir(os.path.join(source_root, subfolder)))):
+                # print("Processing\t{}".format(os.path.join(source_root, subfolder, image_name)))
                 img = Image.open(os.path.join(source_root, subfolder, image_name))
+                _, landmarks = detect_faces(img, model_paths=['./preprocess/face.evoLVe.PyTorch/align/pnet.npy', './preprocess/face.evoLVe.PyTorch/align/rnet.npy', './preprocess/face.evoLVe.PyTorch/align/onet.npy']) 
+                # print(os.path.join(dest_root, movie, subfolder, image_name))
+                # raise NotImplementedError
 
                 try: # Handle exception
                     _, landmarks = detect_faces(img)
@@ -59,12 +64,13 @@ if __name__ == '__main__':
                 # If the landmarks cannot be detected, the img will be resized only
                 if len(landmarks) == 0:
                     print("{} is discarded due to non-detected landmarks!".format(os.path.join(source_root, subfolder, image_name)))
-                    img.resize(size=((args.crop_size, args.crop_size)), resample=Image.BICUBIC)
+                    img = img.resize(size=((args.crop_size, args.crop_size)), resample=Image.BICUBIC)
                     img.save(os.path.join(dest_root, movie, subfolder, image_name))
                     # continue
                 
                 # Crop the images by the first landmarks information (adjustable)
                 if len(landmarks) > 0:
+                    print("{} have {} landmarks.".format(os.path.join(source_root, subfolder, image_name), len(landmarks)))
                     facial5points = [[landmarks[0][j], landmarks[0][j + 5]] for j in range(5)]
                     warped_face = warp_and_crop_face(np.array(img), facial5points, reference, crop_size=(crop_size, crop_size))
                     img_warped = Image.fromarray(warped_face)
@@ -72,4 +78,4 @@ if __name__ == '__main__':
                     if image_name.split('.')[-1].lower() not in ['jpg', 'jpeg']: #not from jpg
                         image_name = '.'.join(image_name.split('.')[:-1]) + '.jpg'
                     
-                    img_warped.save(os.path.join(dest_root, subfolder, image_name))
+                    img_warped.save(os.path.join(dest_root, movie, subfolder, image_name))

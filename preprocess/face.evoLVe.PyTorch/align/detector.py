@@ -7,7 +7,8 @@ from first_stage import run_first_stage
 from get_nets import ONet, PNet, RNet
 
 
-def detect_faces(image, min_face_size = 20.0, thresholds=[0.6, 0.7, 0.8], nms_thresholds=[0.7, 0.7, 0.7]) -> (np.ndarray, np.ndarray):
+def detect_faces(image, min_face_size = 20.0, thresholds=[0.6, 0.7, 0.8], nms_thresholds=[0.7, 0.7, 0.7],
+        model_paths=['./align/pnet.npy', './align/rnet.npy', './align/onet.npy']) -> (np.ndarray, np.ndarray):
     """
     Arguments:
         image: an instance of PIL.Image.
@@ -21,9 +22,9 @@ def detect_faces(image, min_face_size = 20.0, thresholds=[0.6, 0.7, 0.8], nms_th
     """
 
     # LOAD MODELS
-    pnet = PNet()
-    rnet = RNet()
-    onet = ONet()
+    pnet = PNet(model_paths[0])
+    rnet = RNet(model_paths[1])
+    onet = ONet(model_paths[2])
     onet.eval()
 
     # BUILD AN IMAGE PYRAMID
