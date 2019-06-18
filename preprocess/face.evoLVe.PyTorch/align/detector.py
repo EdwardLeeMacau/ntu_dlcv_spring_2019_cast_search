@@ -21,6 +21,8 @@ def detect_faces(image, model_paths, min_face_size = 20.0, thresholds=[0.6, 0.7,
         bounding boxes and facial landmarks.
     """
 
+    global pnet, rnet, onet
+
     # LOAD MODELS
     if pnet is None:
         pnet = PNet(model_paths[0])
