@@ -41,7 +41,7 @@ class IMDbTrainset(Dataset):
         assert ((mode == 'classify') or (mode == 'features')), "The parameter 'mode' must be 'classify' or 'feature'"
         
         self.movie_path   = movie_path
-        self.feature_path = feature_path
+        # self.feature_path = feature_path
         # self.label_path   = label_path
         self.root_path    = os.path.dirname(self.movie_path)
         
@@ -57,8 +57,8 @@ class IMDbTrainset(Dataset):
                                   for filename in self.movies]
 
         # Read as pandas.DataFrame and make it
-#        self.candidates = pd.concat(self.candidate_json, axis=0, keys=self.movies).reset_index()
-#        self.casts      = pd.concat(self.cast_json, axis=0, keys=self.movies).reset_index()
+        self.candidates = pd.concat(self.candidate_json, axis=0, keys=self.movies).reset_index()
+        self.casts      = pd.concat(self.cast_json, axis=0, keys=self.movies).reset_index()
 
         # add "others" label to self.
         if self.mode == 'classify':
@@ -69,19 +69,6 @@ class IMDbTrainset(Dataset):
 
         if self.mode == 'features':
             self.images = pd.concat((self.candidates, self.casts), axis=0, ignore_index=True)
-        
-        # print(self.candidates.columns)  # ['level_0', 'level_1', 0]
-        # print('level_0 :\n', self.candidates[self.candidates[0] == 'others'])    # 15451 labels of imgs are "others"
-
-
-        # Total images in dataset
-        # print("Total candidates in dataset: {}".format(self.candidates.shape))
-        # Without "others"
-        # print("Total casts in dataset:      {}\n".format(self.casts.shape))
-        # print("Total casts in unique: {}".format(self.casts.shape))
-
-        # print("self.candidates :", self.candidates)
-        # print("self.casts :", self.casts)
 
     @property
     def num_casts(self):
@@ -103,22 +90,21 @@ class IMDbTrainset(Dataset):
         if self.mode == 'features':
             image_path = self.images.iat[index, 1]
 
-        # ---------------------------------------------------
-        # To Read the images
-        # ---------------------------------------------------
+        # ------------------- #
+        # To Read the images  #
+        # ------------------- #
         image = Image.open(os.path.join(self.root_path, image_path))
 
-        # ---------------------------------------------------
-        # Features Output dimension: (feature_dim)
-        # Images Output dimension:   (channel, height, width)
-        # ---------------------------------------------------
+        # --------------------------------------------------- #
+        # Images Output dimension:   (channel, height, width) #
+        # --------------------------------------------------- #
         if self.transform:
             image = self.transform(image)
 
         # string label >> int label
         if self.mode == 'classify':
-            label_mapped = self.casts.index[self.casts[0] == cast].to_list()[0] # total : 1 element 
-        
+            label_mapped = self.casts.index[self.casts[0] == cast].to_list()[0]
+
             if self.debug:
                 print("label_mapped : {} <--> {}".format(label_mapped, cast))
         
@@ -207,15 +193,14 @@ class TripletDataset(Dataset):
         if self.mode == 'features':
             image_path = self.images.iat[index, 0]
 
-        # ---------------------------------------------------
-        # To Read the images
-        # ---------------------------------------------------
+        # ------------------ #
+        # To Read the images #
+        # ------------------ #
         image = Image.open(os.path.join(self.root_path, image_path))
 
-        # ---------------------------------------------------
-        # Features Output dimension: (feature_dim)
-        # Images Output dimension:   (channel, height, width)
-        # ---------------------------------------------------
+        # --------------------------------------------------- #
+        # Images Output dimension:   (channel, height, width) #
+        # --------------------------------------------------- #
         if self.transform:
             image = self.transform(image)
 
@@ -280,6 +265,7 @@ class CastDataset(Dataset):
                                            orient='index', typ='series').reset_index()
         self.casts = casts
         num_casts = casts.shape[0]
+        
         if self.keep_others:
             casts.loc[num_casts] = [others.iat[rn,0], 'others']
         else:
@@ -297,6 +283,7 @@ class CastDataset(Dataset):
         labels = torch.tensor([],dtype=torch.long)
         if self.keep_others:
             num_casts += 1
+
         for idx in range(num_casts):
             if self.mode == 'classify':
                 image_path, cast = casts.iat[idx, 0], casts.iat[idx, 1]
@@ -335,7 +322,7 @@ class CastDataset(Dataset):
 #        print(moviename)
         return images, labels, moviename
 
-def load_candidate(rootpath: str, datapath: str, bsize: int) -> (Dataset, DataLoader):
+def load_candidate(datapath: str, bsize: int, threads: int) -> (dict, dict):
     """
       Load the movies in the dataset:
 
@@ -345,7 +332,7 @@ def load_candidate(rootpath: str, datapath: str, bsize: int) -> (Dataset, DataLo
       - bsize: 
     """
 
-    # rootpath = os.path.dirname(datapath)
+    rootpath = os.path.dirname(datapath)
     
     movie_list = os.listdir(datapath)
     all_dataset = {}
@@ -378,7 +365,7 @@ def load_candidate(rootpath: str, datapath: str, bsize: int) -> (Dataset, DataLo
         all_loader[mov] = DataLoader(all_dataset[mov],
                             batch_size=15-num_cast,
                             shuffle=shuf,
-                            num_workers=0)
+                            num_workers=threads)
         info['len'].append(len(all_dataset[mov]))
     
     return all_dataset, all_loader
@@ -386,7 +373,6 @@ def load_candidate(rootpath: str, datapath: str, bsize: int) -> (Dataset, DataLo
 
 def dataloader_unittest(debug=False):
     print("Classify setting: ")
-#    (self, data_path, moviename, mode='classify', keep_others=True, transform=None, debug=False):
         
     dataset = TripletDataset(
         data_path = "./IMDb/train",
@@ -410,45 +396,9 @@ def dataloader_unittest(debug=False):
     for index, (image, label) in enumerate(dataloader, 1):
         print("Image.shape: {}".format(image.shape))
         print("Label.shape: {}".format(label.shape))
-        # print("Label: {}".format(label))
         print()
 
-        # if "others" in label:
-        # if 198 in label:   # "others" mapped to 198
-        #     print('dataloader unitest finished, has 198("others") in labels.')
         break
-
-    #################################################################################
-'''
-    print("Features setting: ")
-
-    dataset = IMDbTrainset(
-        movie_path = "./IMDb/val",
-        feature_path = None,
-        label_path = "./IMDb/val_GT.json",
-        mode = 'features',
-        debug = debug,
-        transform = transforms.Compose([
-        transforms.Resize((384,192), interpolation=3),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ]))
-
-    dataloader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=0)
-
-    print("Length of dataset: {}".format(len(dataset)))
-
-    for index, (image) in enumerate(dataloader, 1):
-        print("Image.shape: {}".format(image.shape))
-        # print("Label.shape: {}".format(label.shape))
-        # print("Label: {}".format(label))
-        print()
-
-        # if "others" in label:
-        # if 198 in label:   # "others" mapped to 198
-        #     print('dataloader unitest finished, has 198("others") in labels.')
-        break
-'''
 
 if __name__ == "__main__":
     dataloader_unittest()

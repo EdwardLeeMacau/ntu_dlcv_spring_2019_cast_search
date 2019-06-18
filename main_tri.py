@@ -7,6 +7,7 @@ Created on Mon Jun 17 07:55:44 2019
 import argparse
 import csv
 import os
+import time
 
 import numpy as np
 import torch
@@ -171,16 +172,29 @@ def main(opt):
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
-    train_data, train_cand = load_candidate(opt.dataroot,
-                                            opt.trainset,
-                                            opt.batchsize)
-    val_data, val_cand = load_candidate(opt.dataroot,
-                                            opt.valset,
-                                            opt.batchsize)
+    # train_data, train_cand = load_candidate(opt.dataroot,
+    #                                         opt.trainset,
+    #                                         opt.batchsize,
+    #                                         opt.threads)
 
-    # train_data, train_cand = load_candidate(opt.trainset, opt.batchsize)
-    # val_data, val_cand     = load_candidate(opt.valset, opt.batchsize)
+    # val_data, val_cand = load_candidate(opt.dataroot,
+    #                                         opt.valset,
+    #                                         opt.batchsize,
+    #                                         opt.threads)
+
+    train_data, train_cand = load_candidate(
+                                opt.trainset, 
+                                opt.batchsize, 
+                                opt.threads
+                            )
+                            
+    val_data, val_cand     = load_candidate(
+                                opt.valset, 
+                                opt.batchsize, 
+                                opt.threads
+                            )
     
+    # Train cast
     train_cast_data = CastDataset(opt.dataroot, opt.trainset,
                                   mode='classify',
                                   keep_others=True,
@@ -189,16 +203,19 @@ def main(opt):
     train_cast = DataLoader(train_cast_data,
                             batch_size=1,
                             shuffle=False,
-                            num_workers=0)
+                            num_workers=opt.threads)
+
+    # Validate cast
     val_cast_data = CastDataset(opt.dataroot, opt.valset,
                                   mode='classify',
                                   keep_others=False,
                                   transform=transform1,
                                   debug=False)
+                                  
     val_cast = DataLoader(val_cast_data,
                             batch_size=1,
                             shuffle=False,
-                            num_workers=0)
+                            num_workers=opt.threads)
     
     model = feature_extractor()
     model = model.to(device)
@@ -222,10 +239,11 @@ def main(opt):
         
         val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, epoch, opt, device)
         
-        draw_graphs(x_epoch, y)
         y['train_loss'].append(training_loss)
         y['val_mAP'].append(val_mAP)
-        
+        x_epoch.append(epoch)
+        draw_curve(x_epoch, y)
+
         print('Epoch [%d/%d] TrainingLoss: %.4f, Valid_mAP: %.2f'
                       % (epoch, opt.epochs, training_loss, val_mAP))
 
@@ -238,11 +256,9 @@ def main(opt):
             val_mAP = best_mAP
         
 if __name__ == '__main__':
-    
     parser = argparse.ArgumentParser(description='Training')
     # Model Setting
     parser.add_argument('--keep_others', action='store_true', help='if true, the image of type others will be keeped.')
-    # parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
     parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
     parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
     # Training setting
