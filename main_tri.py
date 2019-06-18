@@ -109,8 +109,8 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
             cast_name = np.array([cast_name.iat[x,0][-23:][:-4] 
                                         for x in range(len(cast_name[0])-1)])
             candidate_name = cand_data.all_data[mov][0]
-            candidate_name = np.array([candidate_name.iat[x,0][-18:][:-4] 
-                                        for x in range(len(candidate_name[0]))])
+            candidate_name = np.array([candidate_name.iat[index[x],0][-18:][:-4] 
+                                        for x in range(cand.shape[0])])
 #            print(cast_name)
 #            print(candidate_name)
             result = predicting(cast_feature, cast_name, candidate_feature, candidate_name)   
