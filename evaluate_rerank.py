@@ -4,6 +4,7 @@
   Synopsis     [ To evaluate the model performance ]
 """
 
+import argparse
 import csv
 import os
 import time
@@ -12,7 +13,10 @@ import numpy as np
 import pandas as pd
 import scipy.io
 import torch
+from tqdm import tqdm
 
+import final_eval
+import utils
 from re_ranking import re_ranking
 
 
@@ -40,101 +44,115 @@ def evaluate(score, ql, qc, gl, gc):
     junk_index1 = np.argwhere(gl==-1)
     junk_index2 = np.intersect1d(query_index, camera_index)
     junk_index = np.append(junk_index2, junk_index1) #.flatten())
+
+    return good_index, junk_index
+
+def main(opt):
+    # ------------ #
+    # Read results #
+    # ------------ #
+    result = scipy.io.loadmat(opt.features)
+
+    cast_feature = result['cast_features']
+    cast_name    = result['cast_names'].reshape(-1)
+    cast_film    = result['cast_films'].reshape(-1)
+
+    candidate_feature = result['candidate_features']
+    candidate_name    = result['candidate_names'].reshape(-1)
+    candidate_film    = result['candidate_films'].reshape(-1)
+
+    print("Cast_feature.shape {}".format(cast_feature.shape))
+    print("Cast_film.shape:   {}".format(cast_film.shape))
+    print("Cast_name.shape:   {}".format(cast_name.shape))
+    print("Candidate_feature.shape: {}".format(candidate_feature.shape))
+    print("Candidate_name.shape: {}".format(candidate_name.shape))
+    print("Candidate_film.shape: {}".format(candidate_film.shape))
+
+    run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, candidate_film, opt.gt, opt.output)
+
+def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, candidate_film, gt, output, k1=20, k2=6, lambda_value=0.3):
+    cast_name = cast_name[:-1]
+    cast_film = cast_film[:-1]
+
+    films = np.unique(cast_film)
+    # ------------ #
+    # Reranking    #
+    # ------------ #
+    result = []
+    for i in tqdm(range(films.shape[0])):
+        film = films[i]
+        
+        mask_candidate = (candidate_film == film).astype(bool)
+        mask_cast      = (cast_film == film).astype(bool)
+
+        q = cast_feature[mask_cast]
+        q_name = cast_name[mask_cast]
+
+        g = candidate_feature[mask_candidate]
+        g_name = candidate_name[mask_candidate]
+
+        # print('calculate initial distance')
+        q_g_distance = np.dot(q, np.transpose(g))
+        q_q_distance = np.dot(q, np.transpose(q))
+        g_g_distance = np.dot(g, np.transpose(g))
+        # print(q_g_distance.shape, q_q_distance.shape, g_g_distance.shape)
+
+        lambda_value, k1, k2 = 0.3, 20, 6
+        final_distance = re_ranking(q_g_distance, q_q_distance, g_g_distance, k1=k1, k2=k2, lambda_value=lambda_value)
+        
+        for j in range(final_distance.shape[0]):
+            distance = final_distance[j]
+            index = np.argsort(distance)
+            
+            cast_id = q_name[j]
+            candidates = g_name[index]
+
+            result.append({
+                'Id': cast_id, 
+                'Rank': ' '.join(candidates)
+            })
+
+    # Open with binary on windows
+    with open(output, 'w', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+
+        writer.writeheader()
+        for r in result:
+            writer.writerow(r)
+
+    mAP = final_eval.eval(output, gt)
+        
+    return mAP
+
+def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, k1=20, k2=6, lambda_value=0.3) -> list:
+    q_g_distance = np.dot(cast_feature, np.transpose(candidate_feature))
+    q_q_distance = np.dot(cast_feature, np.transpose(cast_feature))
+    g_g_distance = np.dot(candidate_feature, np.transpose(candidate_feature))
     
-    CMC_tmp = compute_mAP(index, good_index, junk_index)
-    return CMC_tmp
+    final_distance = re_ranking(q_g_distance, q_q_distance, g_g_distance, k1=k1, k2=k2, lambda_value=lambda_value)
 
-# Deprecated (20190614)
-def compute_mAP(index, good_index, junk_index):
-    ap = 0
-    cmc = torch.IntTensor(len(index)).zero_()
-    if good_index.size==0:   # if empty
-        cmc[0] = -1
-        return ap,cmc
+    result = []
+    for j in range(final_distance.shape[0]):
+        distance = final_distance[j]
+        index = np.argsort(distance)
+        
+        cast_id = cast_name[j]
+        candidates = candidate_name[index]
 
-    # remove junk_index
-    mask = np.in1d(index, junk_index, invert=True)
-    index = index[mask]
-
-    # find good_index index
-    ngood = len(good_index)
-    mask = np.in1d(index, good_index)
-    rows_good = np.argwhere(mask==True)
-    rows_good = rows_good.flatten()
+        result.append({
+            'Id': cast_id, 
+            'Rank': ' '.join(candidates)
+        })
     
-    cmc[rows_good[0]:] = 1
-    for i in range(ngood):
-        d_recall = 1.0/ngood
-        precision = (i+1)*1.0/(rows_good[i]+1)
-        if rows_good[i]!=0:
-            old_precision = i*1.0/rows_good[i]
-        else:
-            old_precision=1.0
-        ap = ap + d_recall*(old_precision + precision)/2
-
-    return ap, cmc
-
-def output(path):
-    """
-      Params:
-      - path: the directory to output csv file
-
-      Return: None
-    """
-    raise NotImplementedError
-
-def run(query_features, gallery_features, k1=20, k2=6, lambda_value=0.3):
-    # ------------------------
-    # Mapping:
-    #   cast -> query
-    #   candidate -> gallery
-    # ------------------------
-    # re-ranking
-    print('calculate initial distance')
-    q_g_dist = np.dot(query_features, np.transpose(gallery_features))
-    q_q_dist = np.dot(query_features, np.transpose(query_features))
-    g_g_dist = np.dot(gallery_features, np.transpose(gallery_features))
-    
-    print('reranking')
-    re_rank = re_ranking(q_g_dist, q_q_dist, g_g_dist, k1=k1, k2=k2, lambda_value=lambda_value)
-
-    return re_rank
-
-def main():
-    result_path = os.path.join('./output', 'PCB', 'pytorch_result.mat')
-
-    result = scipy.io.loadmat(result_path)
-
-    query_feature = result['query_f']
-    query_cam = result['query_cam'][0]
-    query_label = result['query_label'][0]
-    gallery_feature = result['gallery_f']
-    gallery_cam = result['gallery_cam'][0]
-    gallery_label = result['gallery_label'][0]
-
-    # re-ranking
-    print('calculate initial distance')
-    q_g_dist = np.dot(query_feature, np.transpose(gallery_feature))
-    q_q_dist = np.dot(query_feature, np.transpose(query_feature))
-    g_g_dist = np.dot(gallery_feature, np.transpose(gallery_feature))
-    
-    print('reranking')
-    lambda_value, k1, k2 = 0.3, 20, 6
-    re_rank = re_ranking(q_g_dist, q_q_dist, g_g_dist, k1=k1, k2=k2, lambda_value=lambda_value)
-    
-    CMC = torch.IntTensor(len(gallery_label)).zero_()
-    ap = 0.0
-    for i in range(len(query_label)):
-        ap_tmp, CMC_tmp = evaluate(re_rank[i,:], query_label[i], query_cam[i], gallery_label, gallery_cam)
-        if CMC_tmp[0] == -1:
-            continue
-        CMC = CMC + CMC_tmp
-        ap += ap_tmp
-        #print(i, CMC_tmp[0])
-
-    CMC = CMC.float()
-    CMC = CMC / len(query_label) #average CMC
-    print('top1: {} top5: {} top10: {} mAP:{}'.format(CMC[0], CMC[4], CMC[9], ap/len(query_label)))
+    return result
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Evaluate_GPU')
+    parser.add_argument('--features', type=str, help='directory of the features of cast and candidates.')
+    parser.add_argument('--gt', type=str, help='directory of the gt.json')
+    parser.add_argument('--output', type=str, help='directory of the output.csv')
+    opt = parser.parse_args()
+
+    utils.details(opt)
+
+    main(opt)

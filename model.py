@@ -270,7 +270,7 @@ class PCB(nn.Module):
         super(PCB, self).__init__()
 
         self.debug = debug
-        self.part = 1   # 6 # We cut the pool5 to 6 parts
+        self.part  = 6 # We cut the pool5 to 6 parts
         model_ft = models.resnet50(pretrained=True)
         self.model = model_ft
         self.avgpool = nn.AdaptiveAvgPool2d((self.part,1))

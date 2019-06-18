@@ -1,15 +1,16 @@
 """
-  FileName     [ eval.py ]
+  FileName     [ final_eval.py ]
   PackageName  [ final ]
   Synopsis     [ To evaluate the model performance in IMDb dataset with mAP. ]
 """
 
-import numpy
+import argparse
+import json
 import os
 import os.path as osp
-import json
 from random import shuffle
-import argparse
+
+import numpy
 
 
 def parse_submission(submission_file):
@@ -85,4 +86,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     eval(args.submission, args.gt)
-

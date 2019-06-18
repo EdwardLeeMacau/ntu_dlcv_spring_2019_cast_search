@@ -342,10 +342,8 @@ def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, de
                 print("labels : ", labels , '\n')
 
             loss = criterion(part[0], labels)
-            # for i in range(opt.num_part - 1):
-            #     loss += criterion(part[i+1], labels)
-
-
+            for i in range(1, opt.num_part):
+                loss += criterion(part[i], labels)
 
             # print('Labels: ', labels)
             # print('Preds: ', preds)
@@ -439,31 +437,34 @@ if not opt.PCB:
     ignored_params = list(map(id, model.classifier.parameters() ))
     base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
     optimizer_ft = optim.SGD([
-             {'params': base_params, 'lr': 0.1*opt.lr},
+             {'params': base_params, 'lr': 0.1 * opt.lr},
              {'params': model.classifier.parameters(), 'lr': opt.lr}
          ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
 if opt.PCB:
     ignored_params = list(map(id, model.model.fc.parameters() ))
     ignored_params += (list(map(id, model.classifier0.parameters() )) 
-                    #  +list(map(id, model.classifier1.parameters() ))
-                    #  +list(map(id, model.classifier2.parameters() ))
-                    #  +list(map(id, model.classifier3.parameters() ))
-                    #  +list(map(id, model.classifier4.parameters() ))
-                    #  +list(map(id, model.classifier5.parameters() ))
-                      )
+                     +list(map(id, model.classifier1.parameters() ))
+                     +list(map(id, model.classifier2.parameters() ))
+                     +list(map(id, model.classifier3.parameters() ))
+                     +list(map(id, model.classifier4.parameters() ))
+                     +list(map(id, model.classifier5.parameters() ))
+                    )
     base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
     
+    # ----------------------------------------------- # 
+    # train pretrain parameters with 0.1 learing rate # 
+    # ----------------------------------------------- #
     if opt.optimizer == 'SGD':
         optimizer_ft = optim.SGD([
                 {'params': base_params, 'lr': 0.1 * opt.lr},
                 {'params': model.model.fc.parameters(), 'lr': opt.lr},
                 {'params': model.classifier0.parameters(), 'lr': opt.lr},
-                # {'params': model.classifier1.parameters(), 'lr': opt.lr},
-                # {'params': model.classifier2.parameters(), 'lr': opt.lr},
-                # {'params': model.classifier3.parameters(), 'lr': opt.lr},
-                # {'params': model.classifier4.parameters(), 'lr': opt.lr},
-                # {'params': model.classifier5.parameters(), 'lr': opt.lr},
+                {'params': model.classifier1.parameters(), 'lr': opt.lr},
+                {'params': model.classifier2.parameters(), 'lr': opt.lr},
+                {'params': model.classifier3.parameters(), 'lr': opt.lr},
+                {'params': model.classifier4.parameters(), 'lr': opt.lr},
+                {'params': model.classifier5.parameters(), 'lr': opt.lr},
             ], weight_decay=opt.weight_decay, momentum=opt.momentum, nesterov=True)
 
     elif opt.optimizer == 'Adam':
@@ -471,20 +472,12 @@ if opt.PCB:
                 {'params': base_params, 'lr': 0.1 * opt.lr},
                 {'params': model.model.fc.parameters(), 'lr': opt.lr},
                 {'params': model.classifier0.parameters(), 'lr': opt.lr},
-                # {'params': model.classifier1.parameters(), 'lr': opt.lr},
-                # {'params': model.classifier2.parameters(), 'lr': opt.lr},
-                # {'params': model.classifier3.parameters(), 'lr': opt.lr},
-                # {'params': model.classifier4.parameters(), 'lr': opt.lr},
-                # {'params': model.classifier5.parameters(), 'lr': opt.lr},
+                {'params': model.classifier1.parameters(), 'lr': opt.lr},
+                {'params': model.classifier2.parameters(), 'lr': opt.lr},
+                {'params': model.classifier3.parameters(), 'lr': opt.lr},
+                {'params': model.classifier4.parameters(), 'lr': opt.lr},
+                {'params': model.classifier5.parameters(), 'lr': opt.lr},
             ], weight_decay=opt.weight_decay, betas=(opt.b1, opt.b2))
-
-
-######################################################################
-# Train and evaluate
-# ^^^^^^^^^^^^^^^^^^
-#
-# It should take around 1-2 hours on GPU. 
-#
 
 if __name__ == "__main__":
     dir_name = os.path.join('./model', opt.name)
@@ -520,11 +513,6 @@ if __name__ == "__main__":
 
     # with torch.no_grad():
     #     val_mAP = val(model, dataloaders['val'], 0)
-    #     y['train_loss'].append(0)
-    #     y['train_acc'].append(0)
-    #     y['val_mAP'].append(val_mAP)
-    #     x_epoch.append(0)
-    #     draw_curve(x_epoch, y)
 
     for epoch in range(1, opt.epochs + 1):
         # Train
