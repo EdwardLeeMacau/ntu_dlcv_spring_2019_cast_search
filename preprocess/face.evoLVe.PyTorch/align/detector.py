@@ -6,9 +6,9 @@ from first_stage import run_first_stage
 # from torch.autograd import Variable
 from get_nets import ONet, PNet, RNet
 
+pnet, rnet, onet = None, None, None
 
-def detect_faces(image, min_face_size = 20.0, thresholds=[0.6, 0.7, 0.8], nms_thresholds=[0.7, 0.7, 0.7],
-        model_paths=['./align/pnet.npy', './align/rnet.npy', './align/onet.npy']) -> (np.ndarray, np.ndarray):
+def detect_faces(image, model_paths, min_face_size = 20.0, thresholds=[0.6, 0.7, 0.8], nms_thresholds=[0.7, 0.7, 0.7]) -> (np.ndarray, np.ndarray):
     """
     Arguments:
         image: an instance of PIL.Image.
@@ -22,10 +22,23 @@ def detect_faces(image, min_face_size = 20.0, thresholds=[0.6, 0.7, 0.8], nms_th
     """
 
     # LOAD MODELS
-    pnet = PNet(model_paths[0])
-    rnet = RNet(model_paths[1])
-    onet = ONet(model_paths[2])
-    onet.eval()
+    if pnet is None:
+        pnet = PNet(model_paths[0])
+        print('PNet loaded')
+
+    if rnet is None:
+        rnet = RNet(model_paths[1])
+        print('RNet loaded')
+    
+    if onet is None:
+        onet = ONet(model_paths[2])
+        onet.eval()
+        print('ONet loaded')
+
+    # pnet = PNet(model_paths[0])
+    # rnet = RNet(model_paths[1])
+    # onet = ONet(model_paths[2])
+    # onet.eval()
 
     # BUILD AN IMAGE PYRAMID
     width, height = image.size

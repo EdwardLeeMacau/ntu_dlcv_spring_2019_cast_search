@@ -51,15 +51,16 @@ if __name__ == '__main__':
             for image_name in tqdm(sorted(os.listdir(os.path.join(source_root, subfolder)))):
                 # print("Processing\t{}".format(os.path.join(source_root, subfolder, image_name)))
                 img = Image.open(os.path.join(source_root, subfolder, image_name))
-                _, landmarks = detect_faces(img, model_paths=['./preprocess/face.evoLVe.PyTorch/align/pnet.npy', './preprocess/face.evoLVe.PyTorch/align/rnet.npy', './preprocess/face.evoLVe.PyTorch/align/onet.npy']) 
-                # print(os.path.join(dest_root, movie, subfolder, image_name))
-                # raise NotImplementedError
 
-                try: # Handle exception
-                    _, landmarks = detect_faces(img)
-                except Exception:
-                    print("{} is discarded due to exception!".format(os.path.join(source_root, subfolder, image_name)))
-                    continue
+                # try:
+                _, landmarks = detect_faces(img, model_paths=[
+                    './preprocess/face.evoLVe.PyTorch/align/pnet.npy', 
+                    './preprocess/face.evoLVe.PyTorch/align/rnet.npy', 
+                    './preprocess/face.evoLVe.PyTorch/align/onet.npy']
+                )                
+                # except Exception:
+                #     print("{} is discarded due to exception!".format(os.path.join(source_root, subfolder, image_name)))
+                #     continue
                 
                 # If the landmarks cannot be detected, the img will be resized only
                 if len(landmarks) == 0:
