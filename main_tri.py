@@ -122,7 +122,7 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
         for r in results:
             writer.writerow(r)
     
-    mAP = final_eval.eval('result.csv', opt.csv_file)
+    mAP = final_eval.eval('result.csv', os.path.join(opt.dataroot , "val_GT.json"))
 #        mAP = cal_map(cast_out, cand_out).cpu()
     return mAP
 # --------------------------
@@ -269,7 +269,7 @@ if __name__ == '__main__':
     parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
     parser.add_argument('--log_path',  default='log', help='folder to output loss record')
     parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
-    parser.add_argument('--csv_file', default='/media/disk1/EdwardLee/dataset/IMDb/val_GT.json', type=str, help='Directory of training set.')
+    # parser.add_argument('--gt_file', default='/media/disk1/EdwardLee/dataset/IMDb/val_GT.json', type=str, help='Directory of training set.')
     # parser.add_argument('--outdir', default='PCB', type=str, help='output model name')
     # parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
     # parser.add_argument('--trainset', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/train', type=str, help='Directory of training set.')
