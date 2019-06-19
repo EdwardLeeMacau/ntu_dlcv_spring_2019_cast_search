@@ -61,27 +61,22 @@ def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch,
             
             running_loss += loss.item()*bs
             
-            if j % 1 == 0:
+            if j % opt.log_interval == 0:
                 print('Epoch [%d/%d] Movie [%d/%d] Iter [%d] Loss: %.4f'
                       % (epoch, opt.epochs, i, len(castloader),
-                         j, running_loss/((j+1)*(bs+1))))
-                
-            if j == 2:                    
+                         j, running_loss/((j+1)*(bs+1))))  
+            if j == 30:                    
                 break
         movie_loss += running_loss
 #        print(len(castloader))
-        if i ==5:
-            break
     return model, movie_loss/len(castloader)
                 
             
-def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device):
-    
+def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device):    
     model.eval()
     results = []
-    
+
     with torch.no_grad():
-        
         for i, (cast, _, mov) in enumerate(castloader):  #label_cast 1*n tensor
             mov = mov[0]
             cast = cast.to(device)
@@ -100,9 +95,9 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
                 cand_out = torch.cat((cand_out,out), dim=0)
                 index_out = torch.cat((index_out, index), dim=0)
 
-                if j == 5:
-                    break
-                
+                if j == 30:
+                    break        
+
             print('[Validating] ',mov,'processed...',cand_out.size()[0])
             
             cast_feature = cast_out.numpy()
@@ -140,10 +135,15 @@ def save_network(network, epoch, device, opt, num_fill=3):
 
     return
 
+
+def write_record(record, filename, folder):
+    path = os.path.join(folder, filename)
+    with open(path, 'a') as file:
+        file.write(str(record) + '\n')
+
 # ------------------------------
 #    main function
 #    ---------------------------------
-    
 def main(opt):
     
     os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu)
@@ -203,15 +203,17 @@ def main(opt):
       
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
     
+    os.makedirs(opt.log_path, mode=0o777, exist_ok=True)
 #    since = time.time()
     best_mAP = 0.0
     for epoch in range(opt.epochs +1):
         model, training_loss = train(train_cast, train_cand, train_data,
                                      model, scheduler, optimizer,
                                      epoch, device, opt)
-        
-        print('Epoch [%d/%d] TrainingLoss: %.4f'
-                      % (epoch, opt.epochs, training_loss))
+        record = 'Epoch [%d/%d] TrainingLoss: %.4f' % (epoch, opt.epochs, training_loss)
+        print(record)
+        write_record(record, 'train_movie_avg_loss.txt', opt.log_path )
+
         if epoch % opt.save_interval == 0:
             save_network(model, epoch, device, opt)
         
@@ -219,9 +221,9 @@ def main(opt):
         if epoch % 5 == 0:
     
             val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, epoch, opt, device)
-            
-            print('Epoch [%d/%d]  Valid_mAP: %.2f'
-                          % (epoch, opt.epochs, val_mAP))
+            record = 'Epoch [%d/%d]  Valid_mAP: %.2f' % (epoch, opt.epochs, val_mAP)
+            print(record)
+            write_record(record, 'val_mAP.txt', opt.log_path)
     
             if val_mAP > best_mAP:
                 save_path = os.path.join(opt.mpath, 'net_best.pth')
@@ -235,32 +237,38 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Training')
     # Model Setting
-    parser.add_argument('--drop_others', action='store_true', help='if true, the image of type others will be keeped.')
+    # parser.add_argument('--drop_others', action='store_true', help='if true, the image of type others will be keeped.')
     # parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
-    parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
-    parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
+    # parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
+    # parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
+
     # Training setting
     parser.add_argument('--batchsize', default=10, type=int, help='batchsize in training')
     parser.add_argument('--lr', default=0.00005, type=float, help='learning rate')
     parser.add_argument('--milestones', default=[10, 20, 30], nargs='*', type=int)
     parser.add_argument('--gamma', default=0.1, type=float)
-    parser.add_argument('--epochs', default=60, type=int)
+    parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--optimizer', default='SGD', type=str, help='choose optimizer')
     parser.add_argument('--weight_decay', default=5e-4, type=float)
     parser.add_argument('--momentum', default=0.9, type=float)
     parser.add_argument('--b1', default=0.9, type=float)
     parser.add_argument('--b2', default=0.999, type=float)
-    # I/O Setting 
-    parser.add_argument('--outdir', default='PCB', type=str, help='output model name')
+    
+    # I/O Setting (important !!!)
+
     parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
-    parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
-    parser.add_argument('--dataroot', default='IMDb', type=str, help='Directory of dataroot')
-    parser.add_argument('--trainset', default='IMDb/train', type=str, help='Directory of training set.')
-    parser.add_argument('--valset', default='IMDb/val', type=str, help='Directory of validation set')
-    parser.add_argument('--csv_file', default='IMDb/val_GT.json', type=str, help='Directory of training set.')
+    parser.add_argument('--log_path',  default='log', help='folder to output loss record')
+    # parser.add_argument('--outdir', default='PCB', type=str, help='output model name')
+    # parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
+    parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
+    parser.add_argument('--trainset', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/train', type=str, help='Directory of training set.')
+    parser.add_argument('--valset', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/val', type=str, help='Directory of validation set')
+    parser.add_argument('--csv_file', default='/media/disk1/EdwardLee/dataset/IMDb/val_GT.json', type=str, help='Directory of training set.')
+    
     # Device Setting
     parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
-    parser.add_argument('--threads', default=0, type=int)
+    # parser.add_argument('--threads', default=0, type=int)
+
     # Others Setting
     parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
     parser.add_argument('--log_interval', default=10, type=int)
