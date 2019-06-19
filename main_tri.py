@@ -234,7 +234,7 @@ def main(opt):
         if epoch % 5 == 0:
     
             val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, epoch, opt, device)
-            record = 'Epoch [%d/%d]  Valid_mAP: %.2f' % (epoch, opt.epochs, val_mAP)
+            record = 'Epoch [{}/{}]  Valid_mAP: {:.2%}'.format(epoch, opt.epochs, val_mAP)
             print(record)
             write_record(record, 'val_mAP.txt', opt.log_path)
     
