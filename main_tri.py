@@ -29,6 +29,7 @@ def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch,
     model.train()
     
     movie_loss = 0.0
+#    print(len(castloader))
     
     for i, (cast, label_cast, mov) in enumerate(castloader):
         mov = mov[0]
@@ -36,7 +37,6 @@ def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch,
 #        print(label_cast, type(label_cast))
 #            cast_size = 1, num_cast+1, 3, 448, 448
         num_cast = len(label_cast[0])-1
-        
         running_loss = 0.0
         cand_data.mv = mov
         for j, (cand, label_cand, _) in enumerate(candloader):
@@ -69,7 +69,7 @@ def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch,
             if j == 2:                    
                 break
         movie_loss += running_loss
-        
+#        print(len(castloader))
         if i ==5:
             break
     return model, movie_loss/len(castloader)
@@ -90,6 +90,7 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
             cast_out = cast_out.detach().cpu().view(-1,2048)
             
             cand_out = torch.tensor([])
+            index_out = torch.tensor([], dtype=torch.long)
             cand_data.mv = mov
             for j, (cand, _, index) in enumerate(candloader):
                 cand = cand.to(device)
@@ -97,7 +98,8 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
                 out = model(cand)
                 out = out.detach().cpu().view(-1,2048)
                 cand_out = torch.cat((cand_out,out), dim=0)
-                
+                index_out = torch.cat((index_out, index), dim=0)
+
                 if j == 5:
                     break
                 
@@ -107,11 +109,12 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
             candidate_feature = cand_out.numpy()
             cast_name = cast_data.casts
             cast_name = np.array([cast_name.iat[x,0][-23:][:-4] 
-                                        for x in range(len(cast_name[0])-1)])
+                                        for x in range(len(cast_name[0]))])
             candidate_name = cand_data.all_data[mov][0]
-            candidate_name = np.array([candidate_name.iat[index[x],0][-18:][:-4] 
-                                        for x in range(cand.shape[0])])
-#            print(cast_name)
+
+            candidate_name = np.array([candidate_name.iat[int(index_out[x]),0][-18:][:-4] 
+                                        for x in range(cand_out.shape[0])])
+#           print(cast_name)
 #            print(candidate_name)
             result = predicting(cast_feature, cast_name, candidate_feature, candidate_name)   
             results.extend(result)
@@ -128,6 +131,7 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
 # -----  Save model  -------
 # --------------------------
 def save_network(network, epoch, device, opt, num_fill=3):
+    os.makedirs(opt.mpath, mode=0o777, exist_ok=True)
     save_path = os.path.join(opt.mpath, 'net_{}.pth'.format(str(epoch).zfill(num_fill)))
     torch.save(network.cpu().state_dict(), save_path)
 
@@ -160,7 +164,7 @@ def main(opt):
     train_cand = DataLoader(train_data,
                             batch_size=opt.batchsize,
                             shuffle=True,
-                            num_workers=4)
+                            num_workers=0)
     val_data = TripletDataset(opt.dataroot, opt.valset,
                                   mode='classify',
                                   drop_others=False,
@@ -169,7 +173,7 @@ def main(opt):
     val_cand = DataLoader(val_data,
                             batch_size=opt.batchsize,
                             shuffle=False,
-                            num_workers=4)
+                            num_workers=0)
     
     train_cast_data = CastDataset(opt.dataroot, opt.trainset,
                                   mode='classify',
@@ -202,7 +206,6 @@ def main(opt):
 #    since = time.time()
     best_mAP = 0.0
     for epoch in range(opt.epochs +1):
-        
         model, training_loss = train(train_cast, train_cand, train_data,
                                      model, scheduler, optimizer,
                                      epoch, device, opt)
