@@ -58,14 +58,17 @@ def get_AP(gt_set, ret_list):
 def get_mAP(gt_dict, ret_dict):
     mAP = 0.0
     query_num = len(gt_dict.keys())
+    AP_dict = {}
+
     for key, gt_set in gt_dict.items():
         if ret_dict.get(key) is None:
             AP = 0
         else:
             AP = get_AP(gt_set, ret_dict[key])
         mAP += AP
+        AP_dict[key] = AP
     mAP /= query_num
-    return mAP
+    return mAP, AP_dict
 
 
 def eval(submission_file, gt_file):
@@ -73,10 +76,12 @@ def eval(submission_file, gt_file):
     submission = parse_submission(submission_file)
     print(len(gt_dict))
     print(len(submission))
-    mAP = get_mAP(gt_dict, submission)
-    print('mAP: {:.2%}'.format(mAP))
+    mAP, AP_dict = get_mAP(gt_dict, submission)
 
-    return mAP
+    for key, val in AP_dict.items():
+        print('AP({}): {:.2%}'.format(key, val))
+    print('mAP: {:.2%}'.format(mAP))
+    return mAP, AP_dict
 
 
 if __name__ == '__main__':

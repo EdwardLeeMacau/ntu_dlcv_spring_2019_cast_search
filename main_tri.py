@@ -126,7 +126,7 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
         for r in results:
             writer.writerow(r)
     
-    mAP = final_eval.eval('result.csv', os.path.join(opt.dataroot , "val_GT.json"))
+    mAP, AP_dict = final_eval.eval('result.csv', os.path.join(opt.dataroot , "val_GT.json"))
 #        mAP = cal_map(cast_out, cand_out).cpu()
     return mAP
 # --------------------------
