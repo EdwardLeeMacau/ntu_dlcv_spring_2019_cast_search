@@ -71,7 +71,8 @@ def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch,
                 print('Epoch [%d/%d] Movie [%d/%d] Iter [%d] Loss: %.4f'
                       % (epoch, opt.epochs, i, len(castloader),
                          j, running_loss/((j+1)*(bs+1))))  
-            if j == 30:                    
+            if j == 30:
+                print("j == 30, break")              
                 break
         movie_loss += running_loss
 #        print(len(castloader))
@@ -166,7 +167,7 @@ def main(opt):
                                   mode='classify',
                                   drop_others=True,
                                   transform=transform1,
-                                  debug=False)
+                                  debug=opt.debug)
     train_cand = DataLoader(train_data,
                             batch_size=opt.batchsize,
                             shuffle=True,
@@ -175,7 +176,7 @@ def main(opt):
                                   mode='classify',
                                   drop_others=False,
                                   transform=transform1,
-                                  debug=False)
+                                  debug=opt.debug)
     val_cand = DataLoader(val_data,
                             batch_size=opt.batchsize,
                             shuffle=False,
@@ -185,7 +186,7 @@ def main(opt):
                                   mode='classify',
                                   drop_others=True,
                                   transform=transform1,
-                                  debug=False)
+                                  debug=opt.debug)
     train_cast = DataLoader(train_cast_data,
                             batch_size=1,
                             shuffle=False,
@@ -194,7 +195,7 @@ def main(opt):
                                   mode='classify',
                                   drop_others=False,
                                   transform=transform1,
-                                  debug=False)
+                                  debug=opt.debug)
     val_cast = DataLoader(val_cast_data,
                             batch_size=1,
                             shuffle=False,

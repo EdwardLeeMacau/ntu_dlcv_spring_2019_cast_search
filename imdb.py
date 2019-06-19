@@ -177,6 +177,9 @@ class CastDataset(Dataset):
         labels = torch.tensor([],dtype=torch.long)
         if not self.drop_others:
             num_casts += 1
+        if self.debug:
+            print("num_casts in CastDataset :", num_casts)
+            
         for idx in range(num_casts):
             if self.mode == 'classify':
                 image_path, cast = casts.iat[idx, 0], casts.iat[idx, 1]
