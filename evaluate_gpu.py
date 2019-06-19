@@ -16,9 +16,10 @@ import scipy.io
 import torch
 
 def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
-    # qf contains 1 image feature
-    # print("Qf.shape: ", qf.shape)
-    # print("GF.shape: ", gf.shape)
+    # qf contains 1 image feature       # query feature (tensor)
+    # print("Qf.shape: ", qf.shape)     # query label   (numpy array)
+    # print("GF.shape: ", gf.shape)     # gallery feature (tensor)
+                                        # query camera (movie 概念，但一次只丟一部，沒差)
     query = qf.view(-1,1)
     # print(query.shape)
     
@@ -34,32 +35,34 @@ def evaluate(qf, ql, qc, gf, gl, gc, default_juke_label='others'):
     index = np.argsort(score)  # from small to large
     index = index[::-1]        # inverse it
 
-    if (ql is None) or (qc is None) or (gl is None) or (gc is None):
-        return index
+    return index
 
-    # ----------------------------------
-    # Calculating the mAP and CMC here
-    # ----------------------------------
-    # good index
-    query_index  = np.argwhere(gl==ql)
-    camera_index = np.argwhere(gc==qc)
+    # if (ql is None) or (qc is None) or (gl is None) or (gc is None):
+    #     return index
 
-    # ----------------------------------------------------------------------
-    # np.intersect1d(arr1, arr2)
-    #   Treat the np.array() as a set, find the intersection between 2 sets
-    # 
-    # np.setdiff1d(arr1, arr2)
-    #   Set subtraction, return the elements in arr1 but not in arr2
-    # ----------------------------------------------------------------------
+    # # ----------------------------------
+    # # Calculating the mAP and CMC here
+    # # ----------------------------------
+    # # good index
+    # query_index  = np.argwhere(gl==ql)
+    # camera_index = np.argwhere(gc==qc)
 
-    good_index  = np.setdiff1d(query_index, camera_index, assume_unique=True)
-    junk_index1 = np.argwhere(gl==-1)
-    junk_index2 = np.intersect1d(query_index, camera_index)
-    junk_index  = np.append(junk_index2, junk_index1)
+    # # ----------------------------------------------------------------------
+    # # np.intersect1d(arr1, arr2)
+    # #   Treat the np.array() as a set, find the intersection between 2 sets
+    # # 
+    # # np.setdiff1d(arr1, arr2)
+    # #   Set subtraction, return the elements in arr1 but not in arr2
+    # # ----------------------------------------------------------------------
+
+    # good_index  = np.setdiff1d(query_index, camera_index, assume_unique=True)
+    # junk_index1 = np.argwhere(gl==-1)
+    # junk_index2 = np.intersect1d(query_index, camera_index)
+    # junk_index  = np.append(junk_index2, junk_index1)
     
-    # Cumulative match curve = CMC
-    CMC_tmp = compute_mAP(index, good_index, junk_index)
-    return index, CMC_tmp
+    # # Cumulative match curve = CMC
+    # CMC_tmp = compute_mAP(index, good_index, junk_index)
+    # return index, CMC_tmp
 
 
 def compute_mAP(index, good_index, junk_index):

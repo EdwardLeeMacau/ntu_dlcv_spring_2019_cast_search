@@ -125,6 +125,13 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
     return mAP
 
 def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, k1=20, k2=6, lambda_value=0.3) -> list:
+    """
+    Input
+    - cast_feature : numpy array[n, 2048] (float)
+    - cast_name : numpy array[n, ] (str)
+    - candidate_feature : numpy array[m, 2048] (float)
+    - candidate_name : numpy array[m, ] (str)
+    """
     q_g_distance = np.dot(cast_feature, np.transpose(candidate_feature))
     q_q_distance = np.dot(cast_feature, np.transpose(cast_feature))
     g_g_distance = np.dot(candidate_feature, np.transpose(candidate_feature))
