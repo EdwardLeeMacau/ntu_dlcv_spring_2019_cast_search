@@ -286,7 +286,7 @@ if __name__ == '__main__':
     # Others Setting
     parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
     parser.add_argument('--log_interval', default=2, type=int)
-    parser.add_argument('--save_interval', default=5, type=int)
+    parser.add_argument('--save_interval', default=3, type=int)
     
     opt = parser.parse_args()
     
