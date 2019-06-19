@@ -258,7 +258,7 @@ if __name__ == '__main__':
     parser.add_argument('--milestones', default=[10, 20, 30], nargs='*', type=int)
     parser.add_argument('--gamma', default=0.1, type=float)
     parser.add_argument('--epochs', default=100, type=int)
-    parser.add_argument('--optimizer', default='SGD', type=str, help='choose optimizer')
+    # parser.add_argument('--optimizer', default='ADAM', type=str, help='choose optimizer')
     parser.add_argument('--weight_decay', default=5e-4, type=float)
     parser.add_argument('--momentum', default=0.9, type=float)
     parser.add_argument('--b1', default=0.9, type=float)
