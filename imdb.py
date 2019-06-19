@@ -54,20 +54,16 @@ class TripletDataset(Dataset):
             # Read json as pandas.DataFrame and divide candidates and others
             candidate_json = pd.read_json(os.path.join(data_path, mov, 'candidate.json'),
                                                orient='index', typ='series').reset_index()
-            
-            if drop_others:
-                self.candidates = candidate_json[candidate_json[0] != "others"]
-                self.others = candidate_json[candidate_json[0] == "others"]
-            
-            else:
-                self.candidates = candidate_json
-                
             self.casts = pd.read_json(os.path.join(data_path, mov, 'cast.json'),
                                                orient='index', typ='series') .reset_index()
-    
             num_casts = self.casts.shape[0]
-            self.casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
-            
+          
+            if not drop_others:
+                self.casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
+                self.candidates = candidate_json
+            else:
+                self.candidates = candidate_json[candidate_json[0] != "others"]
+           
             self.all_data[mov] = [ self.candidates, self.casts ]     
             
 
@@ -84,7 +80,8 @@ class TripletDataset(Dataset):
         
         casts = self.all_data[self.mv][1]
         candidates = self.all_data[self.mv][0]
-        index = torch.randint(0, len(candidates[0]), (1,)).tolist()[0]
+        index = int(torch.randint(0, len(candidates[0]), (1,)).tolist()[0])
+
 #        print(casts)
         # -------------------------------------------------
         # Mode:
@@ -112,7 +109,6 @@ class TripletDataset(Dataset):
 
         # string label >> int label
         if self.mode == 'classify':
-            
             label_mapped = casts.index[casts[0] == cast].tolist()[0] 
             # total : 1 element 
         
@@ -149,21 +145,25 @@ class CastDataset(Dataset):
     def __getitem__(self, index):
         
         moviename = self.movies[index]
+#        print(moviename)
         # Read json as pandas.DataFrame and divide candidates and others
+        casts = pd.read_json(os.path.join(self.data_path, moviename, 'cast.json'),
+                                               orient='index', typ='series') .reset_index()
         candidate_json = pd.read_json(os.path.join(self.data_path, moviename, 'candidate.json'),
                                            orient='index', typ='series').reset_index()
-        if self.drop_others == False:
-            others = candidate_json[candidate_json[0] == "others"]
-            rn = torch.randint(0, len(others), (1,)).tolist()[0]
-        
-        casts = pd.read_json(os.path.join(self.data_path, moviename, 'cast.json'),
-                                           orient='index', typ='series').reset_index()
-        self.casts = casts
         num_casts = casts.shape[0]
-        if self.drop_others == False:
+
+        if not self.drop_others:
+            others = candidate_json[candidate_json[0] == "others"]
+            rn = int(torch.randint(0, len(others), (1,)).tolist()[0])
             casts.loc[num_casts] = [others.iat[rn,0], 'others']
-        else:
-            casts.loc[num_casts] = ['no_this_img.jpg', 'others']
+
+        self.casts = casts
+
+#        if not self.drop_others:
+#            casts.loc[num_casts] = [others.iat[rn,0], 'others']
+#        else:
+#            casts.loc[num_casts] = ['no_this_img.jpg', 'others']
         
         # -------------------------------------------------
         # Mode:
@@ -175,7 +175,7 @@ class CastDataset(Dataset):
         
         images = torch.tensor([])
         labels = torch.tensor([],dtype=torch.long)
-        if self.drop_others:
+        if not self.drop_others:
             num_casts += 1
         for idx in range(num_casts):
             if self.mode == 'classify':
