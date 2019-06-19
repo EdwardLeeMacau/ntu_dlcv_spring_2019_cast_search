@@ -127,7 +127,11 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
             writer.writerow(r)
     
     mAP, AP_dict = final_eval.eval('result.csv', os.path.join(opt.dataroot , "val_GT.json"))
-#        mAP = cal_map(cast_out, cand_out).cpu()
+    for key, val in AP_dict.items():
+        record = 'AP({}): {:.2%}'.format(key, val)
+        print(record)
+        write_record(record, 'val_mAP.txt', opt.log_path)
+        
     return mAP
 # --------------------------
 # -----  Save model  -------
@@ -141,7 +145,6 @@ def save_network(network, epoch, device, opt, num_fill=3):
         network.to(device)
 
     return
-
 
 def write_record(record, filename, folder):
     path = os.path.join(folder, filename)
@@ -215,7 +218,7 @@ def main(opt):
     # testing pre-trained model mAP performance
     epoch = 0
     val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, epoch, opt, device)
-    record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%}'.format(epoch, opt.epochs, val_mAP)
+    record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%}\n'.format(epoch, opt.epochs, val_mAP)
     print(record)
     write_record(record, 'val_mAP.txt', opt.log_path)
 
@@ -235,7 +238,7 @@ def main(opt):
         if epoch % 5 == 0:
     
             val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, epoch, opt, device)
-            record = 'Epoch [{}/{}]  Valid_mAP: {:.2%}'.format(epoch, opt.epochs, val_mAP)
+            record = 'Epoch [{}/{}]  Valid_mAP: {:.2%}\n'.format(epoch, opt.epochs, val_mAP)
             print(record)
             write_record(record, 'val_mAP.txt', opt.log_path)
     

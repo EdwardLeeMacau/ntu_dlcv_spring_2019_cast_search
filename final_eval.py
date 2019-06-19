@@ -78,8 +78,8 @@ def eval(submission_file, gt_file):
     print(len(submission))
     mAP, AP_dict = get_mAP(gt_dict, submission)
 
-    for key, val in AP_dict.items():
-        print('AP({}): {:.2%}'.format(key, val))
+    # for key, val in AP_dict.items():
+    #     print('AP({}): {:.2%}'.format(key, val))
     print('mAP: {:.2%}'.format(mAP))
     return mAP, AP_dict
 
