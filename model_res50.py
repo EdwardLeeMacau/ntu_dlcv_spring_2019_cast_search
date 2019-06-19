@@ -21,6 +21,7 @@
 
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
 
 class feature_extractor(nn.Module):
     def __init__(self):
@@ -28,7 +29,7 @@ class feature_extractor(nn.Module):
         import torchvision
         resnet = torchvision.models.resnet50(num_classes=8631,pretrained = False)
         import pickle
-        with open('resnet50_ft_weight.pkl', 'rb') as f:
+        with open('pretrain/resnet50_ft_weight.pkl', 'rb') as f:
             obj = f.read()
         weights = {key: torch.from_numpy(arr) for key, arr in pickle.loads(obj, encoding='latin1').items()}
 
@@ -44,9 +45,13 @@ class feature_extractor(nn.Module):
 
 def model_structure_unittest():
     """ Debug model structure """
-   
+
+    imgs = Variable(torch.FloatTensor(8, 3, 224, 224))
     res = feature_extractor()
-#    print(res)
+    output = res(imgs)
+    print(output.shape)
+    print(output[0][0])
+    # print(res)
 
 if __name__ == "__main__":
     model_structure_unittest()
