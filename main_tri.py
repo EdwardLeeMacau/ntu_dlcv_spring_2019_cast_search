@@ -111,6 +111,7 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
             cast_name = np.array([cast_name.iat[x,0][-23:][:-4] 
                                         for x in range(len(cast_name[0]))])
             candidate_name = cand_data.all_data[mov][0]
+
             candidate_name = np.array([candidate_name.iat[int(index_out[x]),0][-18:][:-4] 
                                         for x in range(cand_out.shape[0])])
 #           print(cast_name)
