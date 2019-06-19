@@ -8,13 +8,16 @@ import torch
 import argparse
 import os
 import csv
-from torch.optim import lr_scheduler 
 import numpy as np
-from model import feature_extractor
-from imdb import TripletDataset, CastDataset
-from tri_loss import triplet_loss
+
+from torch.optim import lr_scheduler 
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
+
+# from model import feature_extractor
+from model_res50 import feature_extractor 
+from imdb import TripletDataset, CastDataset
+from tri_loss import triplet_loss
 from evaluate_rerank import predict_1_movie as predicting
 import final_eval
 
@@ -204,7 +207,14 @@ def main(opt):
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
     
     os.makedirs(opt.log_path, mode=0o777, exist_ok=True)
-#    since = time.time()
+
+    # testing pre-trained model mAP performance
+    epoch = 0
+    val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, epoch, opt, device)
+    record = 'Pre-trained Epoch [%d/%d]  Valid_mAP: %.2f' % (epoch, opt.epochs, val_mAP)
+    print(record)
+    write_record(record, 'val_mAP.txt', opt.log_path)
+
     best_mAP = 0.0
     for epoch in range(opt.epochs +1):
         model, training_loss = train(train_cast, train_cand, train_data,

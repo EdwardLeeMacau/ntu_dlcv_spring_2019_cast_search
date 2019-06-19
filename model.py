@@ -380,13 +380,19 @@ class feature_extractor(nn.Module):
 
 def model_structure_unittest():
     """ Debug model structure """
-    net = ft_net(751, stride=1)
-    net.classifier = nn.Sequential()
-    print(net)
-    input = Variable(torch.FloatTensor(8, 3, 256, 128))
-    output = net(input)
-    print('net output size:')
+    # net = ft_net(751, stride=1)
+    # net.classifier = nn.Sequential()
+    # print(net)
+    # input = Variable(torch.FloatTensor(8, 3, 256, 128))
+    # output = net(input)
+    # print('net output size:')
+    # print(output.shape)
+
+    model = feature_extractor()
+    imgs = Variable(torch.FloatTensor(8, 3, 224, 224))
+    output = model(imgs)
     print(output.shape)
+    print(output[0][0])
 
 if __name__ == "__main__":
     model_structure_unittest()
