@@ -253,7 +253,7 @@ if __name__ == '__main__':
     # parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
 
     # Training setting
-    parser.add_argument('--batchsize', default=10, type=int, help='batchsize in training')
+    parser.add_argument('--batchsize', default=64, type=int, help='batchsize in training')
     parser.add_argument('--lr', default=0.00005, type=float, help='learning rate')
     parser.add_argument('--milestones', default=[10, 20, 30], nargs='*', type=int)
     parser.add_argument('--gamma', default=0.1, type=float)
@@ -283,7 +283,7 @@ if __name__ == '__main__':
     # Others Setting
     parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
     parser.add_argument('--log_interval', default=10, type=int)
-    parser.add_argument('--save_interval', default=1, type=int)
+    parser.add_argument('--save_interval', default=5, type=int)
     
     opt = parser.parse_args()
     
