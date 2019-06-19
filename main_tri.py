@@ -156,7 +156,7 @@ def main(opt):
                                              std=[0.229, 0.224, 0.225])
                                              ])
     
-    train_data = TripletDataset(opt.dataroot, opt.trainset,
+    train_data = TripletDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
                                   mode='classify',
                                   drop_others=True,
                                   transform=transform1,
@@ -165,7 +165,7 @@ def main(opt):
                             batch_size=opt.batchsize,
                             shuffle=True,
                             num_workers=0)
-    val_data = TripletDataset(opt.dataroot, opt.valset,
+    val_data = TripletDataset(opt.dataroot, os.path.join(opt.dataroot, 'val'),
                                   mode='classify',
                                   drop_others=False,
                                   transform=transform1,
@@ -175,7 +175,7 @@ def main(opt):
                             shuffle=False,
                             num_workers=0)
     
-    train_cast_data = CastDataset(opt.dataroot, opt.trainset,
+    train_cast_data = CastDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
                                   mode='classify',
                                   drop_others=True,
                                   transform=transform1,
@@ -184,7 +184,7 @@ def main(opt):
                             batch_size=1,
                             shuffle=False,
                             num_workers=0)
-    val_cast_data = CastDataset(opt.dataroot, opt.valset,
+    val_cast_data = CastDataset(opt.dataroot, os.path.join(opt.dataroot, 'val'),
                                   mode='classify',
                                   drop_others=False,
                                   transform=transform1,
@@ -258,12 +258,13 @@ if __name__ == '__main__':
 
     parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
     parser.add_argument('--log_path',  default='log', help='folder to output loss record')
+    parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
+    parser.add_argument('--csv_file', default='/media/disk1/EdwardLee/dataset/IMDb/val_GT.json', type=str, help='Directory of training set.')
     # parser.add_argument('--outdir', default='PCB', type=str, help='output model name')
     # parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
-    parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
-    parser.add_argument('--trainset', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/train', type=str, help='Directory of training set.')
-    parser.add_argument('--valset', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/val', type=str, help='Directory of validation set')
-    parser.add_argument('--csv_file', default='/media/disk1/EdwardLee/dataset/IMDb/val_GT.json', type=str, help='Directory of training set.')
+    # parser.add_argument('--trainset', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/train', type=str, help='Directory of training set.')
+    # parser.add_argument('--valset', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/val', type=str, help='Directory of validation set')
+    
     
     # Device Setting
     parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
