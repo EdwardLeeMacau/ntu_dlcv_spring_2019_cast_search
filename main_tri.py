@@ -3,6 +3,9 @@
 Created on Mon Jun 17 07:55:44 2019
 
 @author: Chun
+
+Usage:
+    python main_tri.py --dataroot <IMDb_folder_path> --mpath <model_output_path>
 """
 import torch
 import argparse
