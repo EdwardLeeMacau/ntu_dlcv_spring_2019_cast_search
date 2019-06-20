@@ -5,6 +5,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 import utils
+"""
+
+python3 visual.py --csv_file <dir+filename.csv>  --cand_num <num> --cast_name <cast_name>
+
+ex:
+
+python3 visual.py --csv_file ./IMDb/sample_submission.csv  --cand_num 5 --cast_name tt1840309_nm0000171
+
+"""
+
+
+
 
 def main(opts):
     #---------------------------------------------- #
