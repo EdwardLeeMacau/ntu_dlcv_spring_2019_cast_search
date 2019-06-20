@@ -232,7 +232,7 @@ def main(opt):
             save_network(model, epoch, device, opt)
         
         
-        if epoch % 5 == 0:
+        if epoch % opt.save_interval == 0:
     
             val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, epoch, opt, device)
             record = 'Epoch [{}/{}]  Valid_mAP: {:.2%}\n'.format(epoch, opt.epochs, val_mAP)
@@ -271,7 +271,7 @@ if __name__ == '__main__':
     # I/O Setting (important !!!)
 
     parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
-    parser.add_argument('--log_path',  default='log', help='folder to output loss record')
+    parser.add_argument('--log_path',  default='log_new', help='folder to output loss record')
     parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
     # parser.add_argument('--gt_file', default='/media/disk1/EdwardLee/dataset/IMDb/val_GT.json', type=str, help='Directory of training set.')
     # parser.add_argument('--outdir', default='PCB', type=str, help='output model name')
@@ -293,6 +293,3 @@ if __name__ == '__main__':
 
     utils.details(opt)
     main(opt)
-                
-                
-                
