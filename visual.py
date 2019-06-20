@@ -11,7 +11,7 @@ python3 visual.py --csv_file <dir+filename.csv>  --cand_num <num> --cast_name <c
 
 ex:
 
-python3 visual.py --csv_file ./IMDb/sample_submission.csv  --cand_num 5 --cast_name tt1840309_nm0000171
+python3 visual.py --csv_file ./IMDb/sample_submission.csv  --cand_num 5 --cast_name tt1840309_nm0000171 --test_dir ./IMDb_resize/test_resize/
 
 """
 

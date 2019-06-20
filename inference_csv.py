@@ -27,11 +27,21 @@ import utils
               
 
 def test(castloader, candloader, cast_data, cand_data, model, opt, device):
-    # testing trained model, output result.csv
+    '''
+    Target:
+        testing trained model, output result.csv
+    '''
     print('Start Inferencing {}ing dataset ... '.format(opt.action))    
     model.eval()
     results = []
     action = opt.action
+    save_feature = opt.save_feature
+    load_feature = opt.load_feature
+
+    if save_feature:
+        os.makedirs('./feature_np/', mode=0o777, exist_ok=True)
+        os.makedirs('./feature_np/val/', mode=0o777, exist_ok=True)
+        os.makedirs('./feature_np/test/', mode=0o777, exist_ok=True)
 
     if action == 'val':
         with torch.no_grad():
@@ -55,8 +65,8 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
 
                 print('[Testing]', mov, 'processed ...', cand_out.size()[0])
                 
-                cast_feature = cast_out.numpy()
-                candidate_feature = cand_out.numpy()
+                casts_features = cast_out.numpy()
+                candidates_features = cand_out.numpy()
                 cast_name = cast_data.casts
                 cast_name = np.array([cast_name.iat[x,0][-23:][:-4] 
                                             for x in range(len(cast_name[0]))])
@@ -66,7 +76,7 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
                                             for x in range(cand_out.shape[0])])
                 # print(cast_name)
                 # print(candidate_name)
-                result = predict_ranking(cast_feature, cast_name, candidate_feature, candidate_name)   
+                result = predict_ranking(casts_features, cast_name, candidates_features, candidate_name)   
                 results.extend(result)
 
         with open(opt.out_csv,'w') as csvfile:
@@ -89,34 +99,60 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
             for i, (cast, mov, cast_file_name_list) in enumerate(castloader):  #label_cast 1*n tensor
                 mov = mov[0]    # unpacked from batch
                 
-                print("generating {}'s cast features".format(mov))
-                cast = cast.to(device)          # cast.size[1, num_cast, 3, 224, 224]
-                cast_out = model(cast.squeeze(0))
-                cast_out = cast_out.detach().cpu().view(-1,2048)
-                cast_feature = cast_out.numpy()
-                
-                print("generating {}'s candidate features".format(mov))
-                cand_data.set_mov_name(mov)
-                cand_out = torch.tensor([])
-                cand_file_name_list = []
-                # count = 0
-                # only 1 movie's candidates would be load in each i (decided by "cand_data.mv")
-                for j, (cand, cand_file_name_tuple) in enumerate(candloader):
-                    cand_file_name_list.extend(list(cand_file_name_tuple))
-                    # count += len(cand_file_name_tuple)
-                    # print('count = {}'.format(count))
+                if not load_feature:
+                    print("generating {}'s cast features".format(mov))
+                    cast = cast.to(device)          # cast.size[1, num_cast, 3, 224, 224]
+                    cast_out = model(cast.squeeze(0))
+                    cast_out = cast_out.detach().cpu().view(-1,2048)
+                    casts_features = cast_out.numpy()
+                    if save_feature:
+                        feature_path = './feature_np/test/{}/cast/'.format(mov)
+                        os.makedirs(feature_path, mode=0o777, exist_ok=True)
+                        np.save(os.path.join(feature_path, "features.npy"), casts_features)
+                        np.save(os.path.join(feature_path, "names.npy"), cast_file_name_list)
                     
-                    cand = cand.to(device)
-                    out = model(cand)
-                    out = out.detach().cpu().view(-1,2048)
-                    cand_out = torch.cat((cand_out, out), dim=0)
-                candidate_feature = cand_out.numpy()
+                    print("generating {}'s candidate features".format(mov))
+                    cand_data.set_mov_name(mov)
+                    cand_out = torch.tensor([])
+                    cand_file_name_list = []
+                    # count = 0
+                    # only 1 movie's candidates would be load in each i (decided by "cand_data.mv")
+                    for j, (cand, cand_file_name_tuple) in enumerate(candloader):
+                        cand_file_name_list.extend(list(cand_file_name_tuple))
+                        # count += len(cand_file_name_tuple)
+                        # print('count = {}'.format(count))
+                        
+                        cand = cand.to(device)
+                        out = model(cand)
+                        out = out.detach().cpu().view(-1,2048)
+                        cand_out = torch.cat((cand_out, out), dim=0)
+                    candidates_features = cand_out.numpy()
+                    if save_feature:
+                        feature_path = './feature_np/test/{}/candidates/'.format(mov)
+                        os.makedirs(feature_path, mode=0o777, exist_ok=True)
+                        np.save(os.path.join(feature_path, "features.npy"), candidates_features)
+                        np.save(os.path.join(feature_path, "names.npy"), cand_file_name_list)
 
-                print('imgs_num({}) / file_names({})'.format(cand_out.size()[0], len(cand_file_name_list)))
+                    print('imgs_num({}) / file_names({})'.format(cand_out.size()[0], len(cand_file_name_list)))
+                else:   # load_feature
+                    print("loading {}'s cast features".format(mov))
+                    feature_path = './feature_np/test/{}/cast/features.npy'.format(mov)
+                    names_path = './feature_np/test/{}/cast/names.npy'.format(mov)
+                    casts_features = np.load(feature_path)
+                    cast_file_name_list = list(np.load(names_path))
+
+                    print("loading {}'s candidate features".format(mov))
+                    feature_path = './feature_np/test/{}/candidates/features.npy'.format(mov)
+                    names_path = './feature_np/test/{}/candidates/names.npy'.format(mov)
+                    candidates_features = np.load(feature_path)
+                    cand_file_name_list = list(np.load(names_path))
+
+                    print('file_names({})'.format(len(cand_file_name_list)))
+
                 print('[Testing] {} processing predict_ranking ... \n'.format(mov))
                 
                 # predict_ranking
-                result = predict_ranking(cast_feature, np.array(cast_file_name_list), candidate_feature, np.array(cand_file_name_list))
+                result = predict_ranking(casts_features, np.array(cast_file_name_list), candidates_features, np.array(cand_file_name_list))
                 results.extend(result)
 
         print('Start writing output csv file')
@@ -138,6 +174,10 @@ def main(opt):
         folder_name = 'test_resize'
     elif opt.action == 'val':
         folder_name = 'val'
+
+    if opt.save_feature and opt.load_feature:
+        print('Cannot save and load features simultanesouly, please choose one of them')
+        return None
     
     transform1 = transforms.Compose([
                         # transforms.Resize((224,224), interpolation=3),
@@ -155,7 +195,7 @@ def main(opt):
     test_cand = DataLoader(test_data,
                             batch_size=opt.batchsize,
                             shuffle=False,
-                            num_workers=0)
+                            num_workers=opt.num_workers)
     
     test_cast_data = CastDataset(opt.dataroot, os.path.join(opt.dataroot, folder_name),
                                   mode='classify',
@@ -166,9 +206,10 @@ def main(opt):
     test_cast = DataLoader(test_cast_data,
                             batch_size=1,
                             shuffle=False,
-                            num_workers=0)
+                            num_workers=opt.num_workers)
     
     model = feature_extractor()
+    utils.load_network(model, opt.model)
     model = model.to(device)
     # testing trained model, output result.csv
     test(test_cast, test_cand, test_cast_data, test_data, model, opt, device)
@@ -185,8 +226,12 @@ if __name__ == '__main__':
     parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
     parser.add_argument('--action', default='test', type=str, help='action type (test / val)')
     parser.add_argument('--out_csv',  default='./result.csv', help='output csv file name')
+
+    parser.add_argument('--save_feature', action='store_true', help='save new np features when processing')
+    parser.add_argument('--load_feature', action='store_true', help='load old np features when processing')
     # Device Setting
     parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
+    parser.add_argument('--num_workers', default=0, nargs='*', type=int, help='')
     # Others Setting
     parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
     opt = parser.parse_args()
