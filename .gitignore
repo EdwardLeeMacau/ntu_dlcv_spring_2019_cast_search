@@ -20,5 +20,9 @@
 /record/*
 /output/*
 /pretrain/*
+/model_face/*
 
+!/model_face/net_best.pth
+
+# all
 *.csv
