@@ -96,7 +96,7 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
 
     elif action == 'test':
         with torch.no_grad():
-            for i, (cast, mov, cast_file_name_list) in enumerate(castloader):  #label_cast 1*n tensor
+            for i, (cast, mov, cast_file_name_list) in enumerate(castloader):
                 mov = mov[0]    # unpacked from batch
                 
                 if not load_feature:
@@ -109,7 +109,7 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
                         feature_path = './feature_np/test/{}/cast/'.format(mov)
                         os.makedirs(feature_path, mode=0o777, exist_ok=True)
                         np.save(os.path.join(feature_path, "features.npy"), casts_features)
-                        np.save(os.path.join(feature_path, "names.npy"), cast_file_name_list)
+                        np.save(os.path.join(feature_path, "names.npy"), cast_file_name_list[0])
                     
                     print("generating {}'s candidate features".format(mov))
                     cand_data.set_mov_name(mov)
