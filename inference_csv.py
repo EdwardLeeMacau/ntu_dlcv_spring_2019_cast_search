@@ -26,7 +26,9 @@ import final_eval
 import utils
               
 
-def test(castloader, candloader, cast_data, cand_data, model, opt, device):    
+def test(castloader, candloader, cast_data, cand_data, model, opt, device):
+    # testing trained model, output result.csv
+    print('Start Inferencing {}ing dataset ... '.format(opt.action))    
     model.eval()
     results = []
     action = opt.action
@@ -86,34 +88,44 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
         with torch.no_grad():
             for i, (cast, mov, cast_file_name_list) in enumerate(castloader):  #label_cast 1*n tensor
                 mov = mov[0]    # unpacked from batch
-                cand_data.mv = mov
                 
-                # generate cast features
-                # -----------------------------
+                print("generating {}'s cast features".format(mov))
                 cast = cast.to(device)          # cast.size[1, num_cast, 3, 224, 224]
                 cast_out = model(cast.squeeze(0))
                 cast_out = cast_out.detach().cpu().view(-1,2048)
                 cast_feature = cast_out.numpy()
                 
-                # generate candidiate features
+                print("generating {}'s candidate features".format(mov))
+                cand_data.set_mov_name(mov)
+                cand_out = torch.tensor([])
+                cand_file_name_list = []
+                # count = 0
                 # only 1 movie's candidates would be load in each i (decided by "cand_data.mv")
-                for j, (cand, cand_file_name_list) in enumerate(candloader):
+                for j, (cand, cand_file_name_tuple) in enumerate(candloader):
+                    cand_file_name_list.extend(list(cand_file_name_tuple))
+                    # count += len(cand_file_name_tuple)
+                    # print('count = {}'.format(count))
+                    
                     cand = cand.to(device)
-                    cand_out = model(cand.squeeze(0))
-                    cand_out = cand_out.detach().cpu().view(-1,2048)
-                    candidate_feature = cand_out.numpy()
+                    out = model(cand)
+                    out = out.detach().cpu().view(-1,2048)
+                    cand_out = torch.cat((cand_out, out), dim=0)
+                candidate_feature = cand_out.numpy()
 
-                print('[Testing]', mov, 'processed ...', cand_out.size()[0])
+                print('imgs_num({}) / file_names({})'.format(cand_out.size()[0], len(cand_file_name_list)))
+                print('[Testing] {} processing predict_ranking ... \n'.format(mov))
                 
                 # predict_ranking
-                result = predict_ranking(cast_feature, cast_file_name_list, candidate_feature, cand_file_name_list)   
+                result = predict_ranking(cast_feature, np.array(cast_file_name_list), candidate_feature, np.array(cand_file_name_list))
                 results.extend(result)
 
+        print('Start writing output csv file')
         with open(opt.out_csv,'w') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=['Id','Rank'])
             writer.writeheader()
             for r in results:
                 writer.writerow(r)
+    print('Testing output "{}" writed. \n'.format(opt.out_csv))
 
 
 # ------------------------------
@@ -158,17 +170,14 @@ def main(opt):
     
     model = feature_extractor()
     model = model.to(device)
-
     # testing trained model, output result.csv
     test(test_cast, test_cand, test_cast_data, test_data, model, opt, device)
-
-    print('Testing output "{}" writed. \n'.format(opt.out_csv))
         
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Testing')
     # Dataset setting
-    parser.add_argument('--batchsize', default=1, type=int, help='batchsize in training')
+    parser.add_argument('--batchsize', default=128, type=int, help='batchsize in testing (one movie folder each time) ')
     # parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
     
     # I/O Setting (important !!!)

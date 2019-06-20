@@ -80,52 +80,76 @@ class TripletDataset(Dataset):
                 self.all_casts[mov] = self.casts
         
         elif action == 'test':
-            '''
-            Generated : self.all_candidates
-                total files table
-                ( used in __getitem__() / inference_csv.py / main_tri.py )
-            '''
-            self.all_candidates = {}
-            for mov in self.movies:
+            pass
+            # '''
+            # Generated : self.all_candidates
+            #     total files table
+            #     ( used in __getitem__() / inference_csv.py / main_tri.py )
+            # '''
+            # self.all_candidates = {}
+            # for mov in self.movies:
 
-                movie_path = os.path.join(self.data_path, mov)
+            #     movie_path = os.path.join(self.data_path, mov)
 
-                # format : ['tt1840309_0000.jpg', 'tt1840309_0001.jpg', ...]
-                self.candidates = os.listdir(os.path.join(movie_path, 'candidates'))
-                # testing has to keep "others", cannot drop
-                # self.casts = os.listdir(os.path.join(movie_path, 'cast'))
-                # self.casts.append('others')
+            #     # format : ['tt1840309_0000.jpg', 'tt1840309_0001.jpg', ...]
+            #     self.candidates = os.listdir(os.path.join(movie_path, 'candidates'))
+            #     # testing has to keep "others", cannot drop
+            #     # self.casts = os.listdir(os.path.join(movie_path, 'cast'))
+            #     # self.casts.append('others')
 
-                self.all_candidates[mov] = self.candidates
-                # self.all_casts[mov] = self.casts
+            #     self.all_candidates[mov] = self.candidates
+            #     # self.all_casts[mov] = self.casts
 
     def __len__(self):
         if self.mode == 'classify' :
-            return self.candidates.shape[0]
+            if self.action == 'train':
+                return self.candidates.shape[0]
+            elif self.action == 'test':
+                return self.leng
+
+    def set_mov_name(self, mov):
+        self.movie_path = os.path.join(self.data_path, mov)
+        self.candidate_file_list = os.listdir(os.path.join(self.movie_path, 'candidates'))
+        self.leng = len(self.candidate_file_list)
 
     def __getitem__(self, idx):
         if self.action == 'test':    
             '''
             Return:
             - images (torch.tensor) : all candidates transformed images 
-            - file_name_list (np.array) : all candidates img file name (list of str (no ".jpg") )
+            - file_name_list (list) : all candidates img file name (list of str (no ".jpg") )
                                     ['tt1840309_0000', 'tt1840309_0001', ...]
+
+            Return(new):
+            - image (torch.tensor) : transformed image
+            - img_name (str) : img file name (list of str (no ".jpg")
             '''
-            candidates = self.all_candidates[self.mv]
+            candidate_file = self.candidate_file_list[idx]
+            image_path = os.path.join(self.movie_path, 'candidates', candidate_file)
+            image = Image.open(image_path)
 
-            images = torch.tensor([])
-            file_name_list = []
-            for candidate_file in range(candidates):
+            if self.transform:
+                image = self.transform(image)
+
+            img_name = candidate_file[:-4]    # remove ".jpg"
+            return image, img_name
+
+
+            # candidates = self.all_candidates[self.mv]
+            # images = torch.tensor([])
+            # file_name_list = []
+            # for indx, candidate_file in enumerate(candidates):
+            #     print('{} processing {}'.format(indx, candidate_file))
                 
-                movie_path = os.path.join(self.data_path, self.mv)
-                image_path = os.path.join(movie_path, candidate_file)
-                image = Image.open(image_path)
+            #     movie_path = os.path.join(self.data_path, self.mv)
+            #     image_path = os.path.join(movie_path, 'candidates', candidate_file)
+            #     image = Image.open(image_path)
 
-                if self.transform:
-                    image = self.transform(image)
-                images = torch.cat((images,image.unsqueeze(0)), dim=0)
-                file_name_list.append(candidate_file[:-4])  # remove ".jpg"
-            return images, np.array(file_name_list)
+            #     if self.transform:
+            #         image = self.transform(image)
+            #     images = torch.cat((images,image.unsqueeze(0)), dim=0)
+            #     file_name_list.append(candidate_file[:-4])  # remove ".jpg"
+            # return images, file_name_list
 
         elif self.action == 'train':
             # casts = self.all_data[self.mv][1]
@@ -191,7 +215,7 @@ class CastDataset(Dataset):
             Return:
             - images (torch.tensor) : all candidates transformed images 
             - moviename (str) : let candidate dataset can be selected by this mov
-            - file_name_list (np.array) : all candidates img file name (list of str (no ".jpg") )
+            - file_name_list (list) : all candidates img file name (list of str (no ".jpg") )
                                     ['tt1840309_0000', 'tt1840309_0001', ...]
             '''
             movie_path = os.path.join(self.data_path, moviename)
@@ -200,9 +224,9 @@ class CastDataset(Dataset):
 
             images = torch.tensor([])
             file_name_list = []
-            for cast_file in range(casts_files):
+            for cast_file in casts_files:
                 movie_path = os.path.join(self.data_path, moviename)
-                image_path = os.path.join(movie_path, cast_file)
+                image_path = os.path.join(movie_path, 'cast', cast_file)
                 image = Image.open(image_path)
 
                 if self.transform:
@@ -210,7 +234,7 @@ class CastDataset(Dataset):
 
                 images = torch.cat((images,image.unsqueeze(0)), dim=0)
                 file_name_list.append(cast_file[:-4])  # remove ".jpg"
-            return images, moviename, np.array(file_name_list)
+            return images, moviename, file_name_list
         
         elif self.action == 'train':
             # Read json as pandas.DataFrame and divide candidates and others
