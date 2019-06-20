@@ -50,23 +50,27 @@ class TripletDataset(Dataset):
         # data_path = 'IMDb/train'
         # moviename = 'tt6518634'
         # cast/"
-        self.all_data = {}
-        for mov in self.movies:
-            # Read json as pandas.DataFrame and divide candidates and others
-            candidate_json = pd.read_json(os.path.join(data_path, mov, 'candidate.json'),
-                                               orient='index', typ='series').reset_index()
-            self.casts = pd.read_json(os.path.join(data_path, mov, 'cast.json'),
-                                               orient='index', typ='series') .reset_index()
-            num_casts = self.casts.shape[0]
-          
-            if not drop_others:
-                self.casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
-                self.candidates = candidate_json
-            else:
-                self.candidates = candidate_json[candidate_json[0] != "others"]
-           
-            self.all_data[mov] = [ self.candidates, self.casts ]     
+
+        if action in ['train', 'val']:
+            self.all_data = {}
+            for mov in self.movies:
+                # Read json as pandas.DataFrame and divide candidates and others
+                candidate_json = pd.read_json(os.path.join(data_path, mov, 'candidate.json'),
+                                                orient='index', typ='series').reset_index()
+                self.casts = pd.read_json(os.path.join(data_path, mov, 'cast.json'),
+                                                orient='index', typ='series') .reset_index()
+                num_casts = self.casts.shape[0]
             
+                if not drop_others:
+                    self.casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
+                    self.candidates = candidate_json
+                else:
+                    self.candidates = candidate_json[candidate_json[0] != "others"]
+            
+                self.all_data[mov] = [ self.candidates, self.casts ]     
+        
+        elif action == 'test':
+            pass
 
     @property
     def num_casts(self):
@@ -135,20 +139,12 @@ class CastDataset(Dataset):
         self.transform = transform
         
         self.movies = os.listdir(self.data_path)
-        
-#        data_path = 'IMDb/train'
-#        moviename = 'tt6518634'
-#        cast/"
-        
-    @property
-    def num_casts(self):
-        
-        return self.casts.shape[0]
+        # data_path = 'IMDb/train'
+        # moviename = 'tt6518634'
+        # cast/"
 
     def __len__(self):
-        
         return len(self.movies)
-
 
     def __getitem__(self, index):
         

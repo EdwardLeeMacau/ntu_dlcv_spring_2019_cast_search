@@ -99,10 +99,7 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
                 out = model(cand)
                 out = out.detach().cpu().view(-1,2048)
                 cand_out = torch.cat((cand_out,out), dim=0)
-                index_out = torch.cat((index_out, index), dim=0)
-
-                if j == 30:
-                    break        
+                index_out = torch.cat((index_out, index), dim=0)      
 
             print('[Validating] ',mov,'processed...',cand_out.size()[0])
             
@@ -127,9 +124,9 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
     
     mAP, AP_dict = final_eval.eval('result.csv', os.path.join(opt.dataroot , "val_GT.json"))
     for key, val in AP_dict.items():
-        record = 'AP({}): {:.2%}'.format(key, val)
+        record = '[Epoch {}] AP({}): {:.2%}'.format(epoch, key, val)
         print(record)
-        write_record(record, 'val_mAP.txt', opt.log_path)
+        write_record(record, 'val_seperate_AP.txt', opt.log_path)
 
     return mAP
 
