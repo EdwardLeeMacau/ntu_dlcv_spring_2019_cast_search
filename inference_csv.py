@@ -5,7 +5,9 @@
   Synopsis     [ To inference trained model with testing images, output csv file ]
 
   Usage:
-    python inference_csv.py
+    --action : test / val
+  Example:
+    python3 inference_csv.py --dataroot ./IMDb_resize/ --model ./model_face/net_best.pth --action test --out_csv ./k1_40.csv --save_feature --k1 40
 """
 import argparse
 import csv
@@ -83,7 +85,8 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
                                             for x in range(cand_out.shape[0])])
                 # print(cast_name)
                 # print(candidate_name)
-                result = evaluate_rerank.predict_1_movie(casts_features, cast_name, candidates_features, candidate_name)   
+                result = evaluate_rerank.predict_1_movie(casts_features, cast_name, candidates_features, candidate_name, 
+                                            k1=opt.k1, k2=opt.k2, lambda_value=0.3)
                 results.extend(result)
 
         with open(opt.out_csv, 'w') as csvfile:
@@ -166,7 +169,8 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
                 print('[Testing] {} processing predict_ranking ... \n'.format(mov))
                 
                 # predict_ranking
-                result = evaluate_rerank.predict_1_movie(casts_features, np.array(cast_file_name_list), candidates_features, np.array(cand_file_name_list))
+                result = evaluate_rerank.predict_1_movie(casts_features, np.array(cast_file_name_list), candidates_features, np.array(cand_file_name_list),
+                                            k1=opt.k1, k2=opt.k2, lambda_value=0.3)
                 results.extend(result)
 
         print('Start writing output csv file')
@@ -248,6 +252,10 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', default=0, type=int, help='')
     # Others Setting
     parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
+    # Rerank Setting
+    parser.add_argument('--k1', default=20, type=int, help='')
+    parser.add_argument('--k2', default=6, type=int, help='')
+
     opt = parser.parse_args()
     
     utils.details(opt)
