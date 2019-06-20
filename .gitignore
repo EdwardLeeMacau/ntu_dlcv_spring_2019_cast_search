@@ -16,11 +16,14 @@
 /IMDb_mini/*
 /IMDb_resize/*
 /model/*
+/models/*
 /mat/*
 /record/*
 /output/*
+/features/*
 /pretrain/*
 /model_face/*
+/log/*
 
 !/model_face/net_best.pth
 
