@@ -5,7 +5,9 @@ PackageName  [ final ]
 Synopsis     [ To inference trained model with testing images, output csv file ]
 
 Usage:
-    python inference_csv.py
+    --action : test / val
+Example:
+    python3 inference_csv.py --dataroot ./IMDb_resize/ --model ./model_face/net_best.pth --action test --out_csv ./k1_40.csv --save_feature --k1 40
 """
 import torch
 import argparse
