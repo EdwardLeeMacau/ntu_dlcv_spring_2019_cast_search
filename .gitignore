@@ -14,8 +14,11 @@
 /dataset/*
 /IMDb/*
 /IMDb_mini/*
+/IMDb_resize/*
 /model/*
 /mat/*
 /record/*
 /output/*
 /pretrain/*
+
+*.csv

@@ -36,7 +36,7 @@ from torch.utils.data import DataLoader, Dataset
 import utils
 
 class TripletDataset(Dataset):
-    def __init__(self, root_path, data_path, mode='classify', drop_others=True, transform=None, debug=False):
+    def __init__(self, root_path, data_path, mode='classify', drop_others=True, transform=None, debug=False, action='train'):
         
         self.root_path = root_path  # IMDb
         self.data_path = data_path  # IMDb/train
@@ -46,9 +46,10 @@ class TripletDataset(Dataset):
         self.transform = transform
         self.movies = os.listdir(self.data_path)
         self.mv = ''
-#        data_path = 'IMDb/train'
-#        moviename = 'tt6518634'
-#        cast/"
+        self.action = action
+        # data_path = 'IMDb/train'
+        # moviename = 'tt6518634'
+        # cast/"
         self.all_data = {}
         for mov in self.movies:
             # Read json as pandas.DataFrame and divide candidates and others
@@ -77,12 +78,18 @@ class TripletDataset(Dataset):
 
     def __getitem__(self, idx):
         
-        
+        if self.action == 'test':    
+            """
+            TODO: 
+            """
+            pass
+        else:
+            pass
         casts = self.all_data[self.mv][1]
         candidates = self.all_data[self.mv][0]
         index = int(torch.randint(0, len(candidates[0]), (1,)).tolist()[0])
 
-#        print(casts)
+        # print(casts)
         # -------------------------------------------------
         # Mode:
         #   Classify: 
@@ -116,13 +123,14 @@ class TripletDataset(Dataset):
         return image, label_mapped, index
     
 class CastDataset(Dataset):
-    def __init__(self, root_path, data_path, mode='classify', drop_others=True, transform=None, debug=False):
+    def __init__(self, root_path, data_path, mode='classify', drop_others=True, transform=None, debug=False, action='train'):
         
         self.root_path = root_path  # IMDb
         self.data_path = data_path  # IMDb/train 
         self.mode = mode
         self.drop_others = drop_others
         self.debug = debug
+        self.action = action
 
         self.transform = transform
         
@@ -145,71 +153,88 @@ class CastDataset(Dataset):
     def __getitem__(self, index):
         
         moviename = self.movies[index]
-#        print(moviename)
-        # Read json as pandas.DataFrame and divide candidates and others
-        casts = pd.read_json(os.path.join(self.data_path, moviename, 'cast.json'),
-                                               orient='index', typ='series') .reset_index()
-        candidate_json = pd.read_json(os.path.join(self.data_path, moviename, 'candidate.json'),
-                                           orient='index', typ='series').reset_index()
-        num_casts = casts.shape[0]
+        # print(moviename)
 
-        if not self.drop_others:
-            others = candidate_json[candidate_json[0] == "others"]
-            rn = int(torch.randint(0, len(others), (1,)).tolist()[0])
-            casts.loc[num_casts] = [others.iat[rn,0], 'others']
-
-        self.casts = casts
-
-#        if not self.drop_others:
-#            casts.loc[num_casts] = [others.iat[rn,0], 'others']
-#        else:
-#            casts.loc[num_casts] = ['no_this_img.jpg', 'others']
-        
-        # -------------------------------------------------
-        # Mode:
-        #   Classify: 
-        #     get 1 image and 1 label
-        #   Features:
-        #     get 1 image only.
-        # -------------------------------------------------
-        
-        images = torch.tensor([])
-        labels = torch.tensor([],dtype=torch.long)
-        if not self.drop_others:
-            num_casts += 1
-        if self.debug:
-            print("num_casts in CastDataset :", num_casts)
+        if self.action == 'test':
+            cast_folder = os.path.join(self.data_path, moviename, 'cast')
+            candidates_folder = os.path.join(self.data_path, moviename, 'candidates')
             
-        for idx in range(num_casts):
-            if self.mode == 'classify':
-                image_path, cast = casts.iat[idx, 0], casts.iat[idx, 1]
+            casts = os.listdir(cast_folder)
+            candidates = os.listdir(candidates_folder)
+            num_casts = len(casts)
 
-            # ---------------------------------------------------
-            # To Read the images
-            # ---------------------------------------------------
-            image = Image.open(os.path.join(self.root_path, image_path))
-    
-            # ---------------------------------------------------
-            # Features Output dimension: (feature_dim)
-            # Images Output dimension:   (channel, height, width)
-            # ---------------------------------------------------
-            if self.transform:
-                image = self.transform(image)
-            images = torch.cat((images,image.unsqueeze(0)), dim=0)
+            """
+            TODO:
+                return (imgs, moviename)
+            """
 
-            # string label >> int label
-            if self.mode == 'classify':
-                label_mapped = casts.index[casts[0] == cast].tolist() # total : 1 element 
-                label_mapped = torch.tensor(label_mapped)
-#                print(label_mapped)
-                labels = torch.cat((labels,label_mapped),dim=0)
+
+        
+        else:
+            # Read json as pandas.DataFrame and divide candidates and others
+            casts = pd.read_json(os.path.join(self.data_path, moviename, 'cast.json'),
+                                                orient='index', typ='series') .reset_index()
+            candidate_json = pd.read_json(os.path.join(self.data_path, moviename, 'candidate.json'),
+                                            orient='index', typ='series').reset_index()
+            num_casts = casts.shape[0]
+
+            if not self.drop_others:
+                others = candidate_json[candidate_json[0] == "others"]
+                rn = int(torch.randint(0, len(others), (1,)).tolist()[0])
+                casts.loc[num_casts] = [others.iat[rn,0], 'others']
+
+            self.casts = casts
+
+            # if not self.drop_others:
+                # casts.loc[num_casts] = [others.iat[rn,0], 'others']
+            # else:
+                # casts.loc[num_casts] = ['no_this_img.jpg', 'others']
             
-#        print(num_casts)
-#        print(images.size())
-#        print(labels)
-#        print(moviename)
+            # -------------------------------------------------
+            # Mode:
+            #   Classify: 
+            #     get 1 image and 1 label
+            #   Features:
+            #     get 1 image only.
+            # -------------------------------------------------
+            
+            images = torch.tensor([])
+            labels = torch.tensor([],dtype=torch.long)
+            if not self.drop_others:
+                num_casts += 1
+            if self.debug:
+                print("num_casts in CastDataset :", num_casts)
                 
-        return images, labels, moviename
+            for idx in range(num_casts):
+                if self.mode == 'classify':
+                    image_path, cast = casts.iat[idx, 0], casts.iat[idx, 1]
+
+                # ---------------------------------------------------
+                # To Read the images
+                # ---------------------------------------------------
+                image = Image.open(os.path.join(self.root_path, image_path))
+        
+                # ---------------------------------------------------
+                # Features Output dimension: (feature_dim)
+                # Images Output dimension:   (channel, height, width)
+                # ---------------------------------------------------
+                if self.transform:
+                    image = self.transform(image)
+                images = torch.cat((images,image.unsqueeze(0)), dim=0)
+
+                # string label >> int label
+                if self.mode == 'classify':
+                    label_mapped = casts.index[casts[0] == cast].tolist() # total : 1 element 
+                    label_mapped = torch.tensor(label_mapped)
+                    # print(label_mapped)
+                    labels = torch.cat((labels,label_mapped),dim=0)
+                
+            # print(num_casts)
+            # print(images.size())
+            # print(labels)
+            # print(moviename)
+                    
+            return images, labels, moviename
 
 def dataloader_unittest(debug=False):
     print("Classify setting: ")

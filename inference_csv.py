@@ -73,11 +73,11 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
     # -----------------------------
     # when testing val_set
     # -----------------------------
-    mAP, AP_dict = final_eval.eval(opt.out_csv, os.path.join(opt.dataroot , "val_GT.json"))
-    for key, val in AP_dict.items():
-        record = 'AP({}): {:.2%}'.format(key, val)
-        print(record)
-    print('[ mAP = {:.2%} ]\n'.format(mAP))
+    # mAP, AP_dict = final_eval.eval(opt.out_csv, os.path.join(opt.dataroot , "val_GT.json"))
+    # for key, val in AP_dict.items():
+    #     record = 'AP({}): {:.2%}'.format(key, val)
+    #     print(record)
+    # print('[ mAP = {:.2%} ]\n'.format(mAP))
 
 
 # ------------------------------
