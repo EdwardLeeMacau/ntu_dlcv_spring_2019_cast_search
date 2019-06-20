@@ -23,6 +23,7 @@ from imdb import TripletDataset, CastDataset
 from tri_loss import triplet_loss
 from evaluate_rerank import predict_1_movie as predicting
 import final_eval
+import utils
 
 y = {
     'train_loss': [],
@@ -101,15 +102,15 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
                 cand_out = torch.cat((cand_out,out), dim=0)
                 index_out = torch.cat((index_out, index), dim=0)      
 
-            print('[Validating] ',mov,'processed...',cand_out.size()[0])
+            print('[Validating] ', mov, 'processed...', cand_out.size()[0])
             
             cast_feature = cast_out.numpy()
             candidate_feature = cand_out.numpy()
             cast_name = cast_data.casts
             cast_name = np.array([cast_name.iat[x,0][-23:][:-4] 
                                         for x in range(len(cast_name[0]))])
-            candidate_name = cand_data.all_data[mov][0]
-
+            candidate_name = cand_data.all_candidates[mov]
+            # candidate_name = cand_data.all_data[mov][0]
             candidate_name = np.array([candidate_name.iat[int(index_out[x]),0][-18:][:-4] 
                                         for x in range(cand_out.shape[0])])
             # print(cast_name)
@@ -289,7 +290,8 @@ if __name__ == '__main__':
     parser.add_argument('--save_interval', default=3, type=int)
     
     opt = parser.parse_args()
-    
+
+    utils.details(opt)
     main(opt)
                 
                 
