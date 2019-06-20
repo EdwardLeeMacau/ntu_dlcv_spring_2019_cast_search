@@ -29,36 +29,35 @@ y = {
     'val_mAP': []
     }
 
-def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch, device, opt):
-    
+def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch, device, opt):   
     scheduler.step()
     model.train()
     
     movie_loss = 0.0
-#    print(len(castloader))
+    # print(len(castloader))
     
     for i, (cast, label_cast, mov) in enumerate(castloader):
         mov = mov[0]
-#        print('cast size' , cast.size())
-#        print(label_cast, type(label_cast))
-#            cast_size = 1, num_cast+1, 3, 448, 448
+        # print('cast size' , cast.size())
+        # print(label_cast, type(label_cast))
+        #     cast_size = 1, num_cast+1, 3, 448, 448
         num_cast = len(label_cast[0])-1
         running_loss = 0.0
         cand_data.mv = mov
         for j, (cand, label_cand, _) in enumerate(candloader):
             
             bs = cand.size()[0]
-#            print('candidate size : ', cand.size())
-#            print(label_cand, type(label_cand))
-#               cand_size = bs - 1 - num_cast, 3, 448, 448
+            # print('candidate size : ', cand.size())
+            # print(label_cand, type(label_cand))
+            #    cand_size = bs - 1 - num_cast, 3, 448, 448
             optimizer.zero_grad()
             
             inputs = torch.cat((cast.squeeze(0),cand), dim=0)
             label = torch.cat((label_cast[0],label_cand), dim=0).tolist()
-#            print(label)
+            # print(label)
             inputs = inputs.to(device)
             
-#            print('input size :', inputs.size())  # 16,3,448,448
+            # print('input size :', inputs.size())  # 16,3,448,448
             
             out = model(inputs)
             loss = triplet_loss(out, label, num_cast)
@@ -75,7 +74,7 @@ def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch,
                 print("j == 30, break")              
                 break
         movie_loss += running_loss
-#        print(len(castloader))
+        # print(len(castloader))
     return model, movie_loss/len(castloader)
                 
             
@@ -87,7 +86,7 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
         for i, (cast, _, mov) in enumerate(castloader):  #label_cast 1*n tensor
             mov = mov[0]
             cast = cast.to(device)
-#            cast_size = 1, num_cast+1, 3, 448, 448
+            # cast_size = 1, num_cast+1, 3, 448, 448
             cast_out = model(cast.squeeze(0))
             cast_out = cast_out.detach().cpu().view(-1,2048)
             
@@ -96,7 +95,7 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
             cand_data.mv = mov
             for j, (cand, _, index) in enumerate(candloader):
                 cand = cand.to(device)
-    #               cand_size = bs - 1 - num_cast, 3, 448, 448
+                #    cand_size = bs - 1 - num_cast, 3, 448, 448
                 out = model(cand)
                 out = out.detach().cpu().view(-1,2048)
                 cand_out = torch.cat((cand_out,out), dim=0)
@@ -116,8 +115,8 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
 
             candidate_name = np.array([candidate_name.iat[int(index_out[x]),0][-18:][:-4] 
                                         for x in range(cand_out.shape[0])])
-#           print(cast_name)
-#            print(candidate_name)
+            # print(cast_name)
+            # print(candidate_name)
             result = predicting(cast_feature, cast_name, candidate_feature, candidate_name)   
             results.extend(result)
     with open('result.csv','w') as csvfile:
@@ -131,8 +130,9 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
         record = 'AP({}): {:.2%}'.format(key, val)
         print(record)
         write_record(record, 'val_mAP.txt', opt.log_path)
-        
+
     return mAP
+
 # --------------------------
 # -----  Save model  -------
 # --------------------------
@@ -153,9 +153,8 @@ def write_record(record, filename, folder):
 
 # ------------------------------
 #    main function
-#    ---------------------------------
+# ---------------------------------
 def main(opt):
-    
     os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu)
     device = torch.device("cuda:0")
     
