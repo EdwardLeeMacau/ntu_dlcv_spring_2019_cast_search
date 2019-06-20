@@ -98,6 +98,9 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
         with torch.no_grad():
             for i, (cast, mov, cast_file_name_list) in enumerate(castloader):
                 mov = mov[0]    # unpacked from batch
+
+                # [('tt0121765_nm0000204',), ('tt0121765_nm0000168',), ...] to ['tt0121765_nm0000204', 'tt0121765_nm0000168', ...]
+                cast_file_name_list = [x[0] for x in cast_file_name_list]
                 
                 if not load_feature:
                     print("generating {}'s cast features".format(mov))
@@ -110,7 +113,7 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
                         os.makedirs(feature_path, mode=0o777, exist_ok=True)
                         np.save(os.path.join(feature_path, "features.npy"), casts_features)
                         np.save(os.path.join(feature_path, "names.npy"), cast_file_name_list[0])
-                    
+
                     print("generating {}'s candidate features".format(mov))
                     cand_data.set_mov_name(mov)
                     cand_out = torch.tensor([])
