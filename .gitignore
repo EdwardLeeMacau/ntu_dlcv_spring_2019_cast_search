@@ -14,7 +14,21 @@
 /dataset/*
 /IMDb/*
 /IMDb_mini/*
+/IMDb_resize/*
 /model/*
+/models/*
 /mat/*
 /record/*
 /output/*
+/features/*
+/pretrain/*
+/preprocess/face.evoLVe.PyTorch/align/__pycache__/*
+/model_face/*
+/log/*
+/feature_np/*
+
+!/model_face/net_best.pth
+
+# all
+*.csv
+*.jpg

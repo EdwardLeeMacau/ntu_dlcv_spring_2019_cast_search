@@ -110,7 +110,7 @@ def main(opt):
         # We need to transfrm all candidates images and cast images to features #
         # And query the cast inside the same films                              #
         # --------------------------------------------------------------------- #
-        candidate_paths = image_datasets.candidates['level_1']
+        candidate_papredict_1ths = image_datasets.candidates['level_1']
         candidate_films = image_datasets.candidates['level_0']
         cast_paths = image_datasets.casts['level_1']
         cast_films = image_datasets.casts['level_0']

@@ -57,6 +57,7 @@ def details(opt, fmt="{:16} {}", path=None):
     """
     for item, values in vars(opt).items():
         print(fmt.format(item, values))
+    print()
 
     if isinstance(path, str):       
         makedirs = []

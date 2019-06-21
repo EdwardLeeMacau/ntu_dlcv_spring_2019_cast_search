@@ -25,7 +25,7 @@ from torch.autograd import Variable
 from torch.nn import init
 from torchvision import models
 
-import pretrainedmodels
+#import pretrainedmodels
 
 
 def weights_init_kaiming(m):
@@ -270,7 +270,7 @@ class PCB(nn.Module):
         super(PCB, self).__init__()
 
         self.debug = debug
-        self.part  = 6 # We cut the pool5 to 6 parts
+        self.part = 6 # We cut the pool5 to 6 parts
         model_ft = models.resnet50(pretrained=True)
         self.model = model_ft
         self.avgpool = nn.AdaptiveAvgPool2d((self.part,1))
@@ -365,15 +365,34 @@ class PCB_test(nn.Module):
 
         return y
 
+class feature_extractor(nn.Module):
+    def __init__(self):
+        super(feature_extractor, self).__init__()
+        resnet = models.resnet50(pretrained=True)
+        
+        self.resnet_layer = nn.Sequential(*list(resnet.children())[:-2],
+                            nn.AdaptiveAvgPool2d(output_size=(1, 1))
+                            )
+
+    def forward(self, input_data):
+        feature = self.resnet_layer(input_data)
+        return feature
+
 def model_structure_unittest():
     """ Debug model structure """
-    net = ft_net(751, stride=1)
-    net.classifier = nn.Sequential()
-    print(net)
-    input = Variable(torch.FloatTensor(8, 3, 256, 128))
-    output = net(input)
-    print('net output size:')
+    # net = ft_net(751, stride=1)
+    # net.classifier = nn.Sequential()
+    # print(net)
+    # input = Variable(torch.FloatTensor(8, 3, 256, 128))
+    # output = net(input)
+    # print('net output size:')
+    # print(output.shape)
+
+    model = feature_extractor()
+    imgs = Variable(torch.FloatTensor(8, 3, 224, 224))
+    output = model(imgs)
     print(output.shape)
+    print(output[0][0])
 
 if __name__ == "__main__":
     model_structure_unittest()

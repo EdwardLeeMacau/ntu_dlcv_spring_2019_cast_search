@@ -1,547 +1,329 @@
+# -*- coding: utf-8 -*-
 """
-  FileName     [ train.py ]
-  PackageName  [ final ]
-  Synopsis     [ Train the Person_reID model ]
+Created on Mon Jun 17 07:55:44 2019
 
-  Dataset:
-  - IMDb
+@author: Chun
 
-  Dataloader: Customized Image Loader
-
-  Library:
-  - apex: A PyTorch Extension, Tools for easy mixed precision and distributed training in Pytorch
-          https://github.com/NVIDIA/apex
-  - yaml: A human-readable data-serialization language, and commonly used for configuration files.
-  - shutil: High-level file operations Library
-
-  Pretrain network:
-  - PCB:
-  - DenseNet:
-  - NAS:
-  - ResNet: 
-
-  Usage:
-  - python3 train.py --name PCB --PCB --lr 0.02 --batchsize 16 --debug
-  - python3 train.py --name PCB --PCB --lr 0.02 --batchsize 16
-  - python3 train.py --name ft_net_dense
+Usage:
+    python train.py --dataroot <IMDb_folder_path> --mpath <model_output_path>
 """
-
-from __future__ import division, print_function
-
-import argparse
-# import math
-import os
-import time
-from functools import reduce
-from shutil import copyfile
-
-import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
-import scipy
 import torch
-import torch.backends.cudnn as cudnn
-import torch.nn as nn
-import torch.optim as optim
-import yaml
-from torch.nn import functional as F
-from torch.optim import lr_scheduler
-from torchvision import datasets, transforms
+import argparse
+import os
+import csv
+import numpy as np
 
+from torch.optim import lr_scheduler 
+from torch.utils.data import DataLoader
+import torchvision.transforms as transforms
+
+# from model import feature_extractor
+from model_res50 import feature_extractor 
+from imdb import CandDataset, CastDataset
+from tri_loss import triplet_loss
 import evaluate_rerank
-import evaluate_gpu
+import final_eval
 import utils
-from imdb import IMDbTrainset
-from model import PCB, PCB_test, ft_net, ft_net_dense, ft_net_NAS
-from pcb_extractor import extract_feature
-from random_erasing import RandomErasing
-
-matplotlib.use('agg')
-
-# -----------------------------------------
-# fp16: Use Float16 to train the network.
-# -----------------------------------------
-# try:
-#     from apex.fp16_utils import *
-#     from apex import amp, optimizers
-# except ImportError: # will be 3.x series
-#     print('This is not an error. If you want to use low precision, i.e., fp16, please install the apex with cuda support (https://github.com/NVIDIA/apex) and update pytorch to 1.0')
-
-######################################################################
-parser = argparse.ArgumentParser(description='Training')
-# Model Setting
-parser.add_argument('--num_part', default=6, type=int, help='A parameter of PCB network.')
-parser.add_argument('--stride', default=2, type=int, help='stride')
-parser.add_argument('--use_dense', action='store_true', help='use densenet121' )
-parser.add_argument('--use_NAS', action='store_true', help='use NAS' )
-parser.add_argument('--PCB', action='store_true', help='use PCB+ResNet50' )
-parser.add_argument('--keep_others', action='store_true', help='if true, the image of type others will be keeped.')
-parser.add_argument('--cast_image', action='store_true', help='if true, the cast image will train with candidates.')
-# parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
-parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
-parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
-# Training setting
-parser.add_argument('--batchsize', default=16, type=int, help='batchsize in training')
-parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
-parser.add_argument('--milestones', default=[10, 20, 30], nargs='*', type=int)
-parser.add_argument('--gamma', default=0.1, type=float)
-parser.add_argument('--epochs', default=60, type=int)
-parser.add_argument('--color_jitter', action='store_true', help='use color jitter in training' )
-parser.add_argument('--erasing_p', default=0, type=float, help='Random Erasing probability, in [0,1]')
-parser.add_argument('--warm_epoch', default=0, type=int, help='the first K epoch that needs warm up')
-parser.add_argument('--optimizer', default='SGD', type=str, help='choose optimizer')
-parser.add_argument('--weight_decay', default=5e-4, type=float)
-parser.add_argument('--momentum', default=0.9, type=float)
-parser.add_argument('--b1', default=0.9, type=float)
-parser.add_argument('--b2', default=0.999, type=float)
-# I/O Setting 
-parser.add_argument('--name', default='PCB', type=str, help='output model name')
-parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
-parser.add_argument('--trainset', default='./IMDb/train', type=str, help='Directory of training set.')
-parser.add_argument('--valset', default='./IMDb/val', type=str, help='Directory of validation set')
-# Device Setting
-parser.add_argument('--gpu_ids', default=[0], nargs='*', type=int, help='')
-parser.add_argument('--threads', default=8, type=int)
-# Others Setting
-parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
-parser.add_argument('--log_interval', default=10, type=int)
-parser.add_argument('--save_interval', default=1, type=int)
-
-opt = parser.parse_args()
-
-# set gpu ids
-if len(opt.gpu_ids) > 0:
-    torch.cuda.set_device(opt.gpu_ids[0])
-    cudnn.benchmark = True
-
-opt.img_size = tuple(opt.img_size)
-
-# ---------------------------------
-# Dataaugmentation setting
-# ---------------------------------
-transform_train_list = [
-        #transforms.RandomResizedCrop(size=128, scale=(0.75,1.0), ratio=(0.75,1.3333), interpolation=3), #Image.BICUBIC)
-        transforms.Resize((256,128), interpolation=3),
-        transforms.Pad(10),
-        transforms.RandomCrop((256,128)),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ]
-
-transform_val_list = [
-        transforms.Resize(size=(256,128),interpolation=3), #Image.BICUBIC
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ]
-
-if opt.PCB:
-    transform_train_list = [
-        transforms.Resize(opt.img_size, interpolation=3),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ]
-    transform_val_list = [
-        transforms.Resize(opt.img_size, interpolation=3), #Image.BICUBIC
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ]
-
-if opt.erasing_p > 0:
-    transform_train_list = transform_train_list +  [RandomErasing(probability = opt.erasing_p, mean=[0.0, 0.0, 0.0])]
-
-if opt.color_jitter:
-    transform_train_list = [transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0)] + transform_train_list
-
-print(transform_train_list)
-data_transforms = {
-    'train': transforms.Compose(transform_train_list),
-    'val': transforms.Compose(transform_val_list),
-}
-
-image_datasets = {}
-image_datasets['train'] = IMDbTrainset(
-    movie_path=opt.trainset, 
-    feature_path=None, 
-    label_path=opt.trainset+"_GT.json",
-    keep_others=opt.keep_others,
-    cast_image=opt.cast_image,
-    mode='classify',
-    debug=opt.debug, 
-    transform=data_transforms['train']
-)
-image_datasets['val'] = IMDbTrainset(
-    movie_path=opt.valset, 
-    feature_path=None, 
-    label_path=opt.valset+"_GT.json",
-    keep_others=True,
-    cast_image=True,
-    mode='features',
-    debug=opt.debug, 
-    transform=data_transforms['val']
-)
-
-dataloaders = {}
-# pin_memory = True for good GPU (ref : https://blog.csdn.net/tsq292978891/article/details/80454568 )
-dataloaders['train'] = torch.utils.data.DataLoader(
-    image_datasets['train'], 
-    batch_size=opt.batchsize, 
-    drop_last=True,
-    shuffle=True, 
-    num_workers=opt.threads,
-    pin_memory=True
-)
-dataloaders['val'] = torch.utils.data.DataLoader(
-    image_datasets['val'], 
-    batch_size=opt.batchsize,
-    shuffle=True, 
-    num_workers=opt.threads, 
-    pin_memory=True
-)
-
-class_names = image_datasets['train'].classes
-opt.len_class = len(class_names) # For saving in yaml
-# print(class_names)
-
-use_gpu = torch.cuda.is_available()
-# DEVICE = utils.selectDevice()
-
-######################################################################
-# Training the model
-# ------------------
-#
-# Now, let's write a general function to train a model. Here, we will
-# illustrate:
-#
-# -  Scheduling the learning rate
-# -  Saving the best model
-#
-# In the following, parameter ``scheduler`` is an LR scheduler object from
-# ``torch.optim.lr_scheduler``.
 
 y = {
     'train_loss': [],
-    'train_acc': [],
     'val_mAP': []
 }
 
-def val(model, loader, epoch):    
-    model.cpu()
-
-    if opt.PCB:
-        test_model = PCB_test(model).cuda()
-    
-    if not opt.PCB:
-        raise NotImplementedError("Not PCB Structure is not done for val() yet.")
-        
-        test_model = model
-        test_model.classifier.classifier = nn.Sequential()
-
-    # -------------------------------- #
-    # Extract the features             #
-    # -------------------------------- #
-    features = extract_feature(test_model, loader)
-    num_candidates = loader.dataset.candidates.shape[0]    
-    candidate_feature = features[:num_candidates]
-    cast_feature = features[num_candidates:]
-
-    print("Extracted_features.shape: {}".format(features.shape))
-
-    candidate_paths = loader.dataset.candidates['level_1']
-    candidate_films = loader.dataset.candidates['level_0']
-    cast_paths = loader.dataset.casts['level_1']
-    cast_films = loader.dataset.casts['level_0']
-
-    # -------------------------------- # 
-    # Save the features into .mat file # 
-    # -------------------------------- #
-    # candidate_feature = candidate_feature.numpy()
-    candidate_names   = np.asarray([os.path.basename(name).split('.')[0] for name in candidate_paths.tolist()])
-    candidate_films   = np.asarray([name for name in candidate_films.tolist()])
-    # cast_feature      = cast_feature.numpy()
-    cast_names        = np.asarray([os.path.basename(name).split('.')[0] for name in cast_paths.tolist()])
-    cast_films        = np.asarray([name for name in cast_films.tolist()])
-
-    result = {
-        'candidate_features': candidate_feature.numpy(), 
-        'candidate_names': candidate_names,
-        'candidate_films': candidate_films,
-        'cast_features': cast_feature.numpy(), 
-        'cast_names': cast_names,
-        'cast_films': cast_films, 
-    }
-    print("Features saved to {}".format(os.path.join('model', opt.name, 'net_{}_result.mat'.format(str(epoch).zfill(3)))))
-    scipy.io.savemat(os.path.join('model', opt.name, 'net_{}_result.mat'.format(str(epoch).zfill(3))), result)
-
-    model.cuda()
-
-    # -------------------------------- # 
-    # Calculate the mAP # 
-    # -------------------------------- #
-
-    # index = evaluate_gpu.run()
-
-    # re_rank = evaluate_rerank.run(cast_feature, candidate_feature, opt.k1, opt.k2, opt.lambda_value)
-    # print(re_rank)
-
-    mAP = evaluate_gpu.run(cast_feature, cast_names, cast_films, candidate_feature, candidate_names, candidate_films, opt.valset + "_GT.json", "result.csv")
-    
-    return mAP
-
-def train(model, criterion, optimizer, scheduler, num_epochs=25, save_freq=1, debug=False):
-    # Warm starting training technique.
-    warm_up = 0.1 # We start from the 0.1 * lrRate
-    warm_iteration = round(len(dataloaders['train'].dataset) / opt.batchsize) * opt.warm_epoch # first 5 epoch
-
-    if debug:
-        model.debug_mode()
-        
-    # for epoch in range(1, num_epochs + 1):
-
+def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch, device, opt):   
+    """
+      Return:
+      - model
+      - train_loss: average with movies
+    """
     scheduler.step()
     model.train()
     
-    running_loss = 0.0
-    running_corrects = 0.0
-
-    # Iterate over data.
-    for index, (inputs, labels) in enumerate(dataloaders['train'], 1):
-        n = inputs.shape[0]
-        optimizer.zero_grad()                
-
-        if use_gpu:
-            inputs, labels = inputs.cuda(), labels.cuda()
-        
-        # print("Inputs.shape: ", inputs.shape)
-        # print("Labels.shape: ", labels.shape)
-
-        outputs = model(inputs)
-
-        if not opt.PCB:
-            _, preds = torch.max(outputs.data, 1)
-            loss = criterion(outputs, labels)
-        
-        if opt.PCB:
-            part = {}
-            sm = nn.Softmax(dim=1)
-
-            for i in range(opt.num_part):
-                part[i] = outputs[i]
-
-            # score = reduce((lambda x, y: x + y), [F.softmax(tensor, dim=1) for tensor in part.values()])
-            # score = sm(part[0]) + sm(part[1]) + sm(part[2]) + sm(part[3]) + sm(part[4]) + sm(part[5])
-            score = 0
-            for i in range(opt.num_part):
-                score += sm(part[i])
-
-            _, preds = torch.max(score.data, 1)
-
-            if debug:
-                print("part[0] : ", part[0])
-                print("labels : ", labels , '\n')
-
-            loss = criterion(part[0], labels)
-            for i in range(1, opt.num_part):
-                loss += criterion(part[i], labels)
-
-            # print('Labels: ', labels)
-            # print('Preds: ', preds)
-
-        # backward + optimize only if in training phase
-        if epoch < opt.warm_epoch: 
-            warm_up = min(1.0, warm_up + 0.9 / warm_iteration)
-            loss *= warm_up
-
-        loss.backward()
-        optimizer.step()
-
-        # statistics
-        running_loss += loss.item() * n
-        running_corrects += float(torch.sum(preds == labels.data))
-        
-        # Temporal training informations
-        corrects = torch.mean((preds == labels.data).type(torch.float))
-        if index % opt.log_interval == 0:
-            print('[Train] [Epoch {:2d}/{:2d}] [Iteration {:4d}/{:4d}] [Loss: {:.4f}] [Running Acc: {:.2%}]'.format(
-                epoch, num_epochs, index, len(dataloaders['train']), loss.item(), running_corrects / n / index))
-        
-    epoch_loss = running_loss / len(image_datasets['train'])
-    epoch_acc  = running_corrects / len(image_datasets['train'])
-
-    y['train_loss'].append(epoch_loss)
-    y['train_acc'].append(epoch_acc)
+    movie_loss = 0.0
+    # print(len(castloader))
     
-    return model, epoch_loss, epoch_acc
+    for i, (cast, label_cast, mov) in enumerate(castloader):
+        mov = mov[0]
+        # print('cast size' , cast.size())
+        # print(label_cast, type(label_cast))
 
+        num_cast = len(label_cast[0])
+        running_loss = 0.0
+        cand_data.set_mov_name_train(mov)
+        # cand_data.mv = mov
 
-######################################################################
-# Draw Curve
-#---------------------------
-x_epoch = []
-plt.figure(figsize=(19.2, 10.8))
+        for j, (cand, label_cand, _) in enumerate(candloader, 1):    
+            bs = cand.size()[0]
+            # print('candidate size : ', cand.size())
+            # print(label_cand, type(label_cand))
+            #    cand_size = bs - 1 - num_cast, 3, 448, 448
+            optimizer.zero_grad()
+            
+            inputs = torch.cat((cast.squeeze(0), cand), dim=0)
+            label  = torch.cat((label_cast[0], label_cand), dim=0).tolist()
+            # print(label)
+            inputs = inputs.to(device)
+            
+            # print('input size :', inputs.size())  # 16,3,448,448
+            
+            out = model(inputs)
+            loss = triplet_loss(out, label, num_cast)
+            loss.backward()
+            optimizer.step()
+            
+            running_loss += loss.item()*bs
+            
+            if j % opt.log_interval == 0:
+                print('Epoch [%d/%d] Movie [%d/%d] Iter [%d] Loss: %.4f'
+                      % (epoch, opt.epochs, i, len(castloader),
+                         j, running_loss / (j * (bs+1))))
+            
+            if j == 30:
+                print("j == 30, break")              
+                break
+        
+        movie_loss += running_loss
 
-def draw_curve(x, y, save_jpg='train.jpg'):
-    plt.clf()
+    return model, movie_loss / len(castloader)
+                
+            
+def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device):    
+    """
+      Return: mAP
+    """
+    model.eval()
+    results = []
 
-    # Plot loss curves
-    plt.subplot(1, 2, 1)
-    plt.plot(x, y['train_loss'], 'bo-', label='Train Loss')
-    plt.legend(loc=0)
+    with torch.no_grad():
+        for i, (cast, _, mov) in enumerate(castloader):
+            mov = mov[0]
+            cast = cast.to(device)
+            # cast_size = 1, num_cast+1, 3, 448, 448
+            cast_out = model(cast.squeeze(0))
+            cast_out = cast_out.detach().cpu().view(-1, 2048)
+            
+            cand_out = torch.tensor([])
+            index_out = torch.tensor([], dtype=torch.long)
 
-    # Plot accuracy curves
-    plt.subplot(1, 2, 2)
-    plt.plot(x, y['train_acc'], 'go-', label='Train Acc')
-    plt.plot(x, y['val_mAP'], 'ro-', label='Validation mAP')
-    plt.legend(loc=0)
+            cand_data.set_mov_name_train(mov)
+            # cand_data.mv = mov
 
-    plt.savefig(os.path.join('./model', opt.name, save_jpg))
+            # TODO: wrong shape of candidates features / names
 
-######################################################################
-# Save model
-#---------------------------
-def save_network(network, epoch, num_fill=3):
-    save_path = os.path.join('./model', opt.name, 'net_{}.pth'.format(str(epoch).zfill(num_fill)))
+            print("[Validating] Number of candidates should be equal to: {}".format(
+                len(os.listdir(os.path.join(opt.dataroot, 'val', mov, 'candidates')))))
+
+            for j, (cand, _, index) in enumerate(candloader):
+                cand = cand.to(device)
+                #    cand_size = bs - 1 - num_cast, 3, 448, 448
+                out = model(cand)
+                out = out.detach().cpu().view(-1, 2048)
+                cand_out = torch.cat((cand_out, out), dim=0)
+                index_out = torch.cat((index_out, index), dim=0)      
+
+            print('[Validating] {}/{} {} processed, get {} features'.format(i, len(castloader), mov, cand_out.size()[0]))
+
+            cast_feature = cast_out.numpy()
+            candidate_feature = cand_out.numpy()
+
+            # Getting the labels name from dataframe
+            cast_name = cast_data.casts
+            cast_name = cast_name['index'].str[-23:-4].to_numpy()
+            
+            candidate_name = cand_data.all_candidates[mov]
+            # candidate_name = cand_data.all_data[mov][0]
+            candidate_name = np.array([candidate_name.iat[int(index_out[x]), 0][-18:][:-4] 
+                                        for x in range(cand_out.shape[0])])
+            result = evaluate_rerank.predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name)   
+            results.extend(result)
+    
+    with open('result.csv','w') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=['Id','Rank'])
+        writer.writeheader()
+        for r in results:
+            writer.writerow(r)
+    
+    mAP, AP_dict = final_eval.eval('result.csv', os.path.join(opt.dataroot , "val_GT.json"))
+    
+    for key, val in AP_dict.items():
+        record = '[Epoch {}] AP({}): {:.2%}'.format(epoch, key, val)
+        print(record)
+        write_record(record, 'val_seperate_AP.txt', opt.log_path)
+
+    return mAP
+
+# --------------------------
+# -----  Save model  -------
+# --------------------------
+def save_network(network, epoch, device, opt, num_fill=3):
+    os.makedirs(opt.mpath, exist_ok=True)
+    save_path = os.path.join(opt.mpath, 'net_{}.pth'.format(str(epoch).zfill(num_fill)))
     torch.save(network.cpu().state_dict(), save_path)
 
     if torch.cuda.is_available():
-        network.cuda(opt.gpu_ids[0])
+        network.to(device)
 
     return
 
-# ------------------------------ # 
-# Finetuning the convolution-net #
-# ------------------------------ #
-#
-# Load a pretrainied model and reset final fully connected layer.
-#
-
-if opt.use_dense:
-    model = ft_net_dense(len(class_names), opt.droprate)
-elif opt.use_NAS:
-    model = ft_net_NAS(len(class_names), opt.droprate)
-else:
-    model = ft_net(len(class_names), opt.droprate, opt.stride)
-
-if opt.PCB:
-    model = PCB(len(class_names))
-
-opt.nclasses = len(class_names)
-
-print(model)
-
-# ---------------------------------------- # 
-# Optimizer for different model Structures # 
-# ---------------------------------------- #
-if not opt.PCB:
-    ignored_params = list(map(id, model.classifier.parameters() ))
-    base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
-    optimizer_ft = optim.SGD([
-             {'params': base_params, 'lr': 0.1 * opt.lr},
-             {'params': model.classifier.parameters(), 'lr': opt.lr}
-         ], weight_decay=5e-4, momentum=0.9, nesterov=True)
-
-if opt.PCB:
-    ignored_params = list(map(id, model.model.fc.parameters() ))
-    ignored_params += (list(map(id, model.classifier0.parameters() )) 
-                     +list(map(id, model.classifier1.parameters() ))
-                     +list(map(id, model.classifier2.parameters() ))
-                     +list(map(id, model.classifier3.parameters() ))
-                     +list(map(id, model.classifier4.parameters() ))
-                     +list(map(id, model.classifier5.parameters() ))
-                    )
-    base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
+def write_record(record, filename, folder):
+    path = os.path.join(folder, filename)
     
-    # ----------------------------------------------- # 
-    # train pretrain parameters with 0.1 learing rate # 
-    # ----------------------------------------------- #
-    if opt.optimizer == 'SGD':
-        optimizer_ft = optim.SGD([
-                {'params': base_params, 'lr': 0.1 * opt.lr},
-                {'params': model.model.fc.parameters(), 'lr': opt.lr},
-                {'params': model.classifier0.parameters(), 'lr': opt.lr},
-                {'params': model.classifier1.parameters(), 'lr': opt.lr},
-                {'params': model.classifier2.parameters(), 'lr': opt.lr},
-                {'params': model.classifier3.parameters(), 'lr': opt.lr},
-                {'params': model.classifier4.parameters(), 'lr': opt.lr},
-                {'params': model.classifier5.parameters(), 'lr': opt.lr},
-            ], weight_decay=opt.weight_decay, momentum=opt.momentum, nesterov=True)
+    with open(path, 'a') as textfile:
+        textfile.write(str(record) + '\n')
 
-    elif opt.optimizer == 'Adam':
-        optimizer_ft = optim.Adam([
-                {'params': base_params, 'lr': 0.1 * opt.lr},
-                {'params': model.model.fc.parameters(), 'lr': opt.lr},
-                {'params': model.classifier0.parameters(), 'lr': opt.lr},
-                {'params': model.classifier1.parameters(), 'lr': opt.lr},
-                {'params': model.classifier2.parameters(), 'lr': opt.lr},
-                {'params': model.classifier3.parameters(), 'lr': opt.lr},
-                {'params': model.classifier4.parameters(), 'lr': opt.lr},
-                {'params': model.classifier5.parameters(), 'lr': opt.lr},
-            ], weight_decay=opt.weight_decay, betas=(opt.b1, opt.b2))
+    return
 
-if __name__ == "__main__":
-    dir_name = os.path.join('./model', opt.name)
-    os.makedirs(dir_name, exist_ok=True)
+# ------------- #
+# main function #
+# ------------- #
+def main(opt):
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu)
+    device = torch.device("cuda:0")
+    
+    transform1 = transforms.Compose([
+                        transforms.Resize((224,224), interpolation=3),
+                        transforms.ToTensor(),
+                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                             std=[0.229, 0.224, 0.225])
+                                             ])
+    # Candidates datas    
+    train_data = CandDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
+                                  mode='classify',
+                                  drop_others=True,
+                                  transform=transform1,
+                                  debug=opt.debug)
+    
+    train_cand = DataLoader(train_data,
+                            batch_size=opt.batchsize,
+                            shuffle=True,
+                            num_workers=0)
+    
+    val_data = CandDataset(opt.dataroot, os.path.join(opt.dataroot, 'val'),
+                                  mode='classify',
+                                  drop_others=False,
+                                  transform=transform1,
+                                  debug=opt.debug)
+    
+    val_cand = DataLoader(val_data,
+                            batch_size=opt.batchsize,
+                            shuffle=False,
+                            num_workers=0)
+    
+    # Cast Datas
+    train_cast_data = CastDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
+                                  mode='classify',
+                                  drop_others=True,
+                                  transform=transform1,
+                                  debug=opt.debug,
+                                  action='train')
+    
+    train_cast = DataLoader(train_cast_data,
+                            batch_size=1,
+                            shuffle=False,
+                            num_workers=0)
+    
+    val_cast_data = CastDataset(opt.dataroot, os.path.join(opt.dataroot, 'val'),
+                                  mode='classify',
+                                  drop_others=False,
+                                  transform=transform1,
+                                  debug=opt.debug,
+                                  action='train')
+    
+    val_cast = DataLoader(val_cast_data,
+                            batch_size=1,
+                            shuffle=False,
+                            num_workers=0)
+    
+    model = feature_extractor()
+    model = model.to(device)
+    
+    optimizer = torch.optim.Adam(
+                    model.parameters(), 
+                    lr=opt.lr,
+                    weight_decay=opt.weight_decay,
+                    betas=(opt.b1, opt.b2)
+                )  
+      
+    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
+    
+    # testing pre-trained model mAP performance
+    # val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, 0, opt, device)
+    # record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%}\n'.format(0, opt.epochs, val_mAP)
+    # print(record)
+    # write_record(record, 'val_mAP.txt', opt.log_path)
 
-    # record every run
-    copyfile('./train.py', os.path.join(dir_name, 'train.py'))
-    copyfile('./model.py', os.path.join(dir_name, 'model.py'))
-
-    # save opts
-    with open('./{}/opts.yaml'.format(dir_name),'w') as fp:
-        yaml.dump(vars(opt), fp, default_flow_style=False)
-
-    # print opts
-    utils.details(opt)
-
-    # ---------------- # 
-    # training setting # 
-    # ---------------- # 
-    model = model.cuda()
-
-    criterion = nn.CrossEntropyLoss()
-    scheduler = lr_scheduler.MultiStepLR(optimizer_ft, milestones=opt.milestones, gamma=opt.gamma)
-
-    since = time.time()
-
-    # ------------------ # 
-    # Train & Validation # 
-    # ------------------ # 
-    # best_model_wts = model.state_dict()
-    # best_acc = 0.0
-    # best_mAP = 0.0
-
-    # with torch.no_grad():
-    #     val_mAP = val(model, dataloaders['val'], 0)
-
+    best_mAP = 0.0
     for epoch in range(1, opt.epochs + 1):
-        # Train
-        model, epoch_loss, epoch_acc = train(model, criterion, optimizer_ft, scheduler, 
-                num_epochs=opt.epochs, save_freq=opt.save_interval, debug=opt.debug)
+        model, training_loss = train(train_cast, train_cand, train_data,
+                                     model, scheduler, optimizer,
+                                     epoch, device, opt)
+        record = 'Epoch [%d/%d] TrainingLoss: %.4f' % (epoch, opt.epochs, training_loss)
+        print(record)
+        write_record(record, 'train_movie_avg_loss.txt', opt.log_path )
 
-        # Save
         if epoch % opt.save_interval == 0:
-            save_network(model, epoch)
+            save_network(model, epoch, device, opt)
+        
+        if epoch % opt.save_interval == 0:
+            val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, epoch, opt, device)
+            record = 'Epoch [{}/{}]  Valid_mAP: {:.2%}\n'.format(epoch, opt.epochs, val_mAP)
+            print(record)
+            write_record(record, 'val_mAP.txt', opt.log_path)
+    
+            if val_mAP > best_mAP:
+                save_path = os.path.join(opt.mpath, 'net_best.pth')
+                torch.save(model.cpu().state_dict(), save_path)
+    
+                if torch.cuda.is_available():
+                    model.to(device)
+                
+                val_mAP = best_mAP
+        
+if __name__ == '__main__':
+    
+    parser = argparse.ArgumentParser(description='Training')
+    # Model Setting
+    # parser.add_argument('--drop_others', action='store_true', help='if true, the image of type others will be keeped.')
+    # parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
+    # parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
+    # parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
 
-        # Validation
-        with torch.no_grad():
-            val_mAP = val(model, dataloaders['val'], epoch)
-        
-        y['val_mAP'].append(val_mAP)
+    # Training setting
+    parser.add_argument('--batchsize', default=64, type=int, help='batchsize in training')
+    parser.add_argument('--lr', default=5e-5, type=float, help='learning rate')
+    parser.add_argument('--milestones', default=[10, 20, 30], nargs='*', type=int)
+    parser.add_argument('--gamma', default=0.1, type=float)
+    parser.add_argument('--epochs', default=100, type=int)
+    # parser.add_argument('--optimizer', default='ADAM', type=str, help='choose optimizer')
+    parser.add_argument('--weight_decay', default=5e-4, type=float)
+    parser.add_argument('--momentum', default=0.9, type=float)
+    parser.add_argument('--b1', default=0.9, type=float)
+    parser.add_argument('--b2', default=0.999, type=float)
+    
+    # I/O Setting (important !!!)
+    parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
+    parser.add_argument('--log_path',  default='log', help='folder to output loss record')
+    parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
+    # parser.add_argument('--gt_file', default='/media/disk1/EdwardLee/dataset/IMDb/val_GT.json', type=str, help='Directory of training set.')
+    # parser.add_argument('--outdir', default='PCB', type=str, help='output model name')
+    # parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
+    # parser.add_argument('--trainset', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/train', type=str, help='Directory of training set.')
+    # parser.add_argument('--valset', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/val', type=str, help='Directory of validation set')
+    
+    # Device Setting
+    parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
+    # parser.add_argument('--threads', default=0, type=int)
 
-        # best_model_wts = model.state_dict()
-        # best_mAP = mAP
-        
-        # Draw curves
-        x_epoch.append(epoch)
-        draw_curve(x_epoch, y)
-        
-        # Print times
-        time_elapsed = time.time() - since
-        print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
-        
-    # ------------------ # 
-    # End                # 
-    # ------------------ # 
-    time_elapsed = time.time() - since
-    print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+    # Others Setting
+    parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
+    parser.add_argument('--log_interval', default=2, type=int)
+    parser.add_argument('--save_interval', default=3, type=int, help='Validation and save the network')
+
+    opt = parser.parse_args()
+
+    # Make directories
+    os.makedirs(opt.log_path, exist_ok=True)
+
+    # Show the settings, and start to train
+    utils.details(opt)
+    main(opt)

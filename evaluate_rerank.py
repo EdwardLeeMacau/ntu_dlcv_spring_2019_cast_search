@@ -78,8 +78,9 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
     # ------------ #
     # Reranking    #
     # ------------ #
+
     result = []
-    for i in tqdm(range(films.shape[0])):
+    for i in range(films.shape[0]):
         film = films[i]
         
         mask_candidate = (candidate_film == film).astype(bool)
@@ -97,7 +98,6 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
         g_g_distance = np.dot(g, np.transpose(g))
         # print(q_g_distance.shape, q_q_distance.shape, g_g_distance.shape)
 
-        lambda_value, k1, k2 = 0.3, 20, 6
         final_distance = re_ranking(q_g_distance, q_q_distance, g_g_distance, k1=k1, k2=k2, lambda_value=lambda_value)
         
         for j in range(final_distance.shape[0]):
@@ -125,10 +125,24 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
     return mAP
 
 def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, k1=20, k2=6, lambda_value=0.3) -> list:
+    """
+      Input
+      - cast_feature : numpy array[n, 2048] (float)
+      - cast_name : numpy array[n, ] (str)
+      - candidate_feature : numpy array[m, 2048] (float)
+      - candidate_name : numpy array[m, ] (str)
+    """
+
+    print("Cast_feat.shape: {}".format(cast_feature.shape))
+    print("Cast_name.shape: {}".format(cast_name.shape))
+    print("Cand_feat.shape: {}".format(candidate_feature.shape))
+    print("Cand_name.shape: {}".format(candidate_name.shape))
+
     q_g_distance = np.dot(cast_feature, np.transpose(candidate_feature))
     q_q_distance = np.dot(cast_feature, np.transpose(cast_feature))
     g_g_distance = np.dot(candidate_feature, np.transpose(candidate_feature))
     
+    # Re_ranking() using L2 Distance as the result, smaller distance mean 'closer' with each other
     final_distance = re_ranking(q_g_distance, q_q_distance, g_g_distance, k1=k1, k2=k2, lambda_value=lambda_value)
 
     result = []
@@ -138,7 +152,7 @@ def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, 
         
         cast_id = cast_name[j]
         candidates = candidate_name[index]
-
+        
         result.append({
             'Id': cast_id, 
             'Rank': ' '.join(candidates)
@@ -148,7 +162,7 @@ def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Evaluate_GPU')
-    parser.add_argument('--features', type=str, help='directory of the features of cast and candidates.')
+    # parser.add_argument('--features', type=str, help='directory of the features of cast and candidates.')
     parser.add_argument('--gt', type=str, help='directory of the gt.json')
     parser.add_argument('--output', type=str, help='directory of the output.csv')
     opt = parser.parse_args()
