@@ -264,8 +264,8 @@ if __name__ == '__main__':
     if not os.path.exists(opt.dataroot):
         raise IOError("{} is not exists".format(opt.dataroot))
     
-    if not os.path.exists(opt.gt):
-        pass
-        # raise IOError("{} is not exists".format(opt.gt))
+    # if not os.path.exists(opt.gt):
+    #     pass
+    #     raise IOError("{} is not exists".format(opt.gt))
 
     main(opt)

@@ -44,8 +44,11 @@ from torch.utils.data import DataLoader, Dataset
 
 import utils
 
+# To pop the candidates
 class TripletDataset(Dataset):
     def __init__(self, root_path, data_path, mode='classify', drop_others=True, transform=None, debug=False, action='train'):
+        # self.root_path = os.path.dirname(data_path)
+        
         self.root_path = root_path  # IMDb
         self.data_path = data_path  # IMDb/train
         self.mode = mode
@@ -59,6 +62,7 @@ class TripletDataset(Dataset):
             # self.all_data = {}
             self.all_candidates = {}
             self.all_casts = {}
+            
             for mov in self.movies:
                 # Read json as pandas.DataFrame and divide candidates and others
                 candidate_json = pd.read_json(os.path.join(data_path, mov, 'candidate.json'),
@@ -86,9 +90,10 @@ class TripletDataset(Dataset):
             #     total files table
             #     ( used in __getitem__() / inference_csv.py / main_tri.py )
             # '''
+            
             # self.all_candidates = {}
+            
             # for mov in self.movies:
-
             #     movie_path = os.path.join(self.data_path, mov)
 
             #     # format : ['tt1840309_0000.jpg', 'tt1840309_0001.jpg', ...]
@@ -101,11 +106,11 @@ class TripletDataset(Dataset):
             #     # self.all_casts[mov] = self.casts
 
     def __len__(self):
-        if self.mode == 'classify' :
-            if self.action == 'train':
-                return self.candidates.shape[0]
-            elif self.action == 'test':
-                return self.leng
+        if self.action == 'train':
+            return self.candidates.shape[0]
+        
+        elif self.action == 'test':
+            return self.leng
 
     def set_mov_name(self, mov):
         self.movie_path = os.path.join(self.data_path, mov)
@@ -115,14 +120,14 @@ class TripletDataset(Dataset):
     def __getitem__(self, idx):
         if self.action == 'test':    
             '''
-            Return:
-            - images (torch.tensor) : all candidates transformed images 
-            - file_name_list (list) : all candidates img file name (list of str (no ".jpg") )
+              Return:
+              - images (torch.tensor) : all candidates transformed images 
+              - file_name_list (list) : all candidates img file name (list of str (no ".jpg") )
                                     ['tt1840309_0000', 'tt1840309_0001', ...]
 
-            Return(new):
-            - image (torch.tensor) : transformed image
-            - img_name (str) : img file name (list of str (no ".jpg")
+              Return(new):
+              - image (torch.tensor) : transformed image
+              - img_name (str) : img file name (list of str (no ".jpg")
             '''
             candidate_file = self.candidate_file_list[idx]
             image_path = os.path.join(self.movie_path, 'candidates', candidate_file)
@@ -132,6 +137,7 @@ class TripletDataset(Dataset):
                 image = self.transform(image)
 
             img_name = candidate_file[:-4]    # remove ".jpg"
+            
             return image, img_name
 
 
@@ -152,6 +158,12 @@ class TripletDataset(Dataset):
             # return images, file_name_list
 
         elif self.action == 'train':
+            '''
+              Return:
+              - image
+              - label_mapped
+              - index
+            '''
             # casts = self.all_data[self.mv][1]
             # candidates = self.all_data[self.mv][0]        
             casts = self.all_casts[self.mv]
@@ -161,21 +173,16 @@ class TripletDataset(Dataset):
             index = int(torch.randint(0, len(candidates[0]), (1,)).tolist()[0])
 
             # print(casts)
-            # -------------------------------------------------
-            # Mode:
-            #   Classify: 
-            #     get 1 image and 1 label
-            #   Faces: get 1
-            #     get 1 image, label is 1 if it contains a face
-            #   Features:
-            #     get 1 image only.
-            # -------------------------------------------------
+            # ---------------------------- # 
+            # Classify:                    #
+            #   get 1 image and 1 label    #
+            # ---------------------------- #
             if self.mode == 'classify':
                 image_path, cast = candidates.iat[index, 0], candidates.iat[index, 1]
 
-            # ---------------------------------------------------
-            # To Read the images
-            # ---------------------------------------------------
+            # ---------------------------- #
+            # To Read the images           #
+            # ---------------------------- #
             image = Image.open(os.path.join(self.root_path, image_path))
 
             # ---------------------------------------------------
@@ -188,13 +195,14 @@ class TripletDataset(Dataset):
             # string label >> int label
             if self.mode == 'classify':
                 label_mapped = casts.index[casts[0] == cast].tolist()[0] 
-                # total : 1 element 
             
             return image, label_mapped, index
     
+# To pop the cast images
 class CastDataset(Dataset):
     def __init__(self, root_path, data_path, mode='classify', drop_others=True, transform=None, debug=False, action='train'):
-        
+        # self.root_path = os.path.dirname(data_path)
+
         self.root_path = root_path  # IMDb
         self.data_path = data_path  # IMDb/train 
         self.mode = mode
@@ -211,19 +219,21 @@ class CastDataset(Dataset):
         moviename = self.movies[index]
 
         if self.action == 'test':
+            # Scanning the folder list
             '''
-            Return:
-            - images (torch.tensor) : all candidates transformed images 
-            - moviename (str) : let candidate dataset can be selected by this mov
-            - file_name_list (list) : all candidates img file name (list of str (no ".jpg") )
-                                    ['tt1840309_0000', 'tt1840309_0001', ...]
+              Return:
+              - images (torch.tensor) : all casts transformed images 
+              - moviename (str)       : let candidate dataset can be selected by this mov
+              - file_name_list (list) : 
+                  all casts img file name (list of str (no ".jpg") )
+                  ['tt1840309_0000', 'tt1840309_0001', ...]
             '''
-            movie_path = os.path.join(self.data_path, moviename)
-            # format : ['tt1840309_0000.jpg', 'tt1840309_0001.jpg', ...]
+            movie_path  = os.path.join(self.data_path, moviename)
             casts_files = os.listdir(os.path.join(movie_path, 'cast'))
 
             images = torch.tensor([])
             file_name_list = []
+
             for cast_file in casts_files:
                 movie_path = os.path.join(self.data_path, moviename)
                 image_path = os.path.join(movie_path, 'cast', cast_file)
@@ -234,6 +244,7 @@ class CastDataset(Dataset):
 
                 images = torch.cat((images,image.unsqueeze(0)), dim=0)
                 file_name_list.append(cast_file[:-4])  # remove ".jpg"
+            
             return images, moviename, file_name_list
         
         elif self.action == 'train':
@@ -265,9 +276,11 @@ class CastDataset(Dataset):
             # -------------------------------------------------
             
             images = torch.tensor([])
-            labels = torch.tensor([],dtype=torch.long)
+            labels = torch.tensor([], dtype=torch.long)
+            
             if not self.drop_others:
                 num_casts += 1
+            
             if self.debug:
                 print("num_casts in CastDataset :", num_casts)
                 
@@ -275,25 +288,26 @@ class CastDataset(Dataset):
                 if self.mode == 'classify':
                     image_path, cast = casts.iat[idx, 0], casts.iat[idx, 1]
 
-                # ---------------------------------------------------
-                # To Read the images
-                # ---------------------------------------------------
+                # ------------------ #
+                # To Read the images #
+                # ------------------ #
                 image = Image.open(os.path.join(self.root_path, image_path))
         
-                # ---------------------------------------------------
-                # Features Output dimension: (feature_dim)
-                # Images Output dimension:   (channel, height, width)
-                # ---------------------------------------------------
+                # --------------------------------------------------- #
+                # Features Output dimension: (feature_dim)            #
+                # Images Output dimension:   (channel, height, width) #
+                # --------------------------------------------------- #
                 if self.transform:
                     image = self.transform(image)
-                images = torch.cat((images,image.unsqueeze(0)), dim=0)
+
+                images = torch.cat((images, image.unsqueeze(0)), dim=0)
 
                 # string label >> int label
                 if self.mode == 'classify':
-                    label_mapped = casts.index[casts[0] == cast].tolist() # total : 1 element 
+                    label_mapped = casts.index[casts[0] == cast].tolist()
                     label_mapped = torch.tensor(label_mapped)
-                    # print(label_mapped)
-                    labels = torch.cat((labels,label_mapped),dim=0)
+                    labels = torch.cat((labels, label_mapped), dim=0)
+                    
             # print(num_casts)
             # print(images.size())
             # print(labels)
@@ -302,8 +316,8 @@ class CastDataset(Dataset):
 
 def dataloader_unittest(debug=False):
     print("Classify setting: ")
-#    (self, data_path, moviename, mode='classify', drop_others=True, transform=None, debug=False):
-        
+    
+    # (self, data_path, moviename, mode='classify', drop_others=True, transform=None, debug=False):
     dataset = TripletDataset(
         data_path = "./IMDb/train",
         moviename = "tt6518634",
@@ -335,7 +349,7 @@ def dataloader_unittest(debug=False):
         break
 
     #################################################################################
-'''
+    '''
     print("Features setting: ")
 
     dataset = IMDbTrainset(
@@ -364,7 +378,7 @@ def dataloader_unittest(debug=False):
         # if 198 in label:   # "others" mapped to 198
         #     print('dataloader unitest finished, has 198("others") in labels.')
         break
-'''
+    '''
 
 if __name__ == "__main__":
     dataloader_unittest()
