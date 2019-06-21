@@ -19,7 +19,6 @@ import torchvision.transforms as transforms
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 
-import evaluate_gpu
 import evaluate_rerank
 import final_eval
 import utils
