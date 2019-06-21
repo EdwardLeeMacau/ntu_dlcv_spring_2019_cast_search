@@ -17,6 +17,7 @@ import numpy as np
 from torch.optim import lr_scheduler 
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
+import torch.nn as nn
 
 # from model import feature_extractor
 from model_res50 import feature_extractor 
@@ -80,9 +81,9 @@ def train(castloader: DataLoader, candloader: DataLoader, cand_data, model: nn.M
                       % (epoch, opt.epochs, i, len(castloader),
                          j, running_loss / (j * (bs + 1))))
             
-            if j == 30:
-                print("j == 30, break")              
-                break
+            # if j == 30:
+            #     print("j == 30, break")              
+            #     break
         
         movie_loss += running_loss
 
@@ -313,7 +314,7 @@ if __name__ == '__main__':
     
     # Device Setting
     parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
-    # parser.add_argument('--threads', default=0, type=int)
+    parser.add_argument('--threads', default=0, type=int)
 
     # Others Setting
     parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
