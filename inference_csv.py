@@ -244,7 +244,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
     parser.add_argument('--action', default='test', type=str, help='action type (test / val)')
     parser.add_argument('--out_csv',  default='./result.csv', help='output csv file name')
-    parser.add_argument('--gt', type=str, help='if gt_file is exists, measure the mAP.')
+    # parser.add_argument('--gt', type=str, help='if gt_file is exists, measure the mAP.')
     parser.add_argument('--save_feature', action='store_true', help='save new np features when processing')
     parser.add_argument('--load_feature', action='store_true', help='load old np features when processing')
     # Device Setting
@@ -264,8 +264,8 @@ if __name__ == '__main__':
     if not os.path.exists(opt.dataroot):
         raise IOError("{} is not exists".format(opt.dataroot))
     
-    if not os.path.exists(opt.gt):
-        pass
+    # if not os.path.exists(opt.gt):
+    #     pass
         # raise IOError("{} is not exists".format(opt.gt))
 
     main(opt)
