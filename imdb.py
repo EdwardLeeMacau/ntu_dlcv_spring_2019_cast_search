@@ -212,6 +212,9 @@ class CastDataset(Dataset):
         self.transform = transform
         self.movies = os.listdir(self.data_path)    # moviename = 'tt6518634'
 
+        # TO Handle the difference between 'train' or 'test'
+
+
     def __len__(self):
         return len(self.movies)
 
@@ -235,7 +238,6 @@ class CastDataset(Dataset):
             file_name_list = []
 
             for cast_file in casts_files:
-                movie_path = os.path.join(self.data_path, moviename)
                 image_path = os.path.join(movie_path, 'cast', cast_file)
                 image = Image.open(image_path)
 
@@ -243,7 +245,7 @@ class CastDataset(Dataset):
                     image = self.transform(image)
 
                 images = torch.cat((images,image.unsqueeze(0)), dim=0)
-                file_name_list.append(cast_file[:-4])  # remove ".jpg"
+                file_name_list.append(cast_file.split('.')[0])
             
             return images, moviename, file_name_list
         

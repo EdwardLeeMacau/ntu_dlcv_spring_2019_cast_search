@@ -94,7 +94,7 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
     results = []
 
     with torch.no_grad():
-        for i, (cast, _, mov) in enumerate(castloader):  #label_cast 1*n tensor
+        for i, (cast, _, mov) in enumerate(castloader):
             mov = mov[0]
             cast = cast.to(device)
             # cast_size = 1, num_cast+1, 3, 448, 448
@@ -104,28 +104,33 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
             cand_out = torch.tensor([])
             index_out = torch.tensor([], dtype=torch.long)
             cand_data.mv = mov
-            
+
+            # TODO: wrong shape of candidates features / names
+
+            print("[Validating] Number of candidates should be equal to: {}".format(
+                len(os.listdir(os.path.join(opt.dataroot, 'val', mov, 'candidates')))))
+
             for j, (cand, _, index) in enumerate(candloader):
                 cand = cand.to(device)
                 #    cand_size = bs - 1 - num_cast, 3, 448, 448
                 out = model(cand)
-                out = out.detach().cpu().view(-1,2048)
-                cand_out = torch.cat((cand_out,out), dim=0)
+                out = out.detach().cpu().view(-1, 2048)
+                cand_out = torch.cat((cand_out, out), dim=0)
                 index_out = torch.cat((index_out, index), dim=0)      
 
-            print('[Validating] ', mov, 'processed...', cand_out.size()[0])
-            
+            print('[Validating] {}/{} {} processed, get {} features'.format(i, len(castloader), mov, cand_out.size()[0]))
+
             cast_feature = cast_out.numpy()
             candidate_feature = cand_out.numpy()
+
+            # Getting the labels name from dataframe
             cast_name = cast_data.casts
-            cast_name = np.array([cast_name.iat[x,0][-23:][:-4] 
-                                        for x in range(len(cast_name[0]))])
+            cast_name = cast_name['index'].str[-23:-4].to_numpy()
+            
             candidate_name = cand_data.all_candidates[mov]
             # candidate_name = cand_data.all_data[mov][0]
-            candidate_name = np.array([candidate_name.iat[int(index_out[x]),0][-18:][:-4] 
+            candidate_name = np.array([candidate_name.iat[int(index_out[x]), 0][-18:][:-4] 
                                         for x in range(cand_out.shape[0])])
-            # print(cast_name)
-            # print(candidate_name)
             result = evaluate_rerank.predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name)   
             results.extend(result)
     
@@ -178,7 +183,7 @@ def main(opt):
                         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                              std=[0.229, 0.224, 0.225])
                                              ])
-    
+    # Candidates datas    
     train_data = TripletDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
                                   mode='classify',
                                   drop_others=True,
@@ -201,11 +206,13 @@ def main(opt):
                             shuffle=False,
                             num_workers=0)
     
+    # Cast Datas
     train_cast_data = CastDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
                                   mode='classify',
                                   drop_others=True,
                                   transform=transform1,
-                                  debug=opt.debug)
+                                  debug=opt.debug,
+                                  action='train')
     
     train_cast = DataLoader(train_cast_data,
                             batch_size=1,
@@ -216,7 +223,8 @@ def main(opt):
                                   mode='classify',
                                   drop_others=False,
                                   transform=transform1,
-                                  debug=opt.debug)
+                                  debug=opt.debug,
+                                  action='train')
     
     val_cast = DataLoader(val_cast_data,
                             batch_size=1,
