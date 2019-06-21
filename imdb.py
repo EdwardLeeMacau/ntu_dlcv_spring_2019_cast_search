@@ -45,7 +45,7 @@ from torch.utils.data import DataLoader, Dataset
 import utils
 
 # To pop the candidates
-class TripletDataset(Dataset):
+class CandDataset(Dataset):
     def __init__(self, root_path, data_path, mode='classify', drop_others=True, transform=None, debug=False, action='train'):
         # self.root_path = os.path.dirname(data_path)
         
@@ -55,7 +55,7 @@ class TripletDataset(Dataset):
         self.drop_others = drop_others
         self.transform = transform
         self.movies = os.listdir(self.data_path)
-        self.mv = ''
+        self.mv = self.movies[0]    # initialize(avoid '' keyerror when dataloader initialize)
         self.action = action
 
         if action == 'train':
@@ -67,65 +67,50 @@ class TripletDataset(Dataset):
                 # Read json as pandas.DataFrame and divide candidates and others
                 candidate_json = pd.read_json(os.path.join(data_path, mov, 'candidate.json'),
                                                 orient='index', typ='series').reset_index()
-                self.casts = pd.read_json(os.path.join(data_path, mov, 'cast.json'),
+                casts = pd.read_json(os.path.join(data_path, mov, 'cast.json'),
                                                 orient='index', typ='series') .reset_index()
-                num_casts = self.casts.shape[0]
+                num_casts = casts.shape[0]
             
                 if not drop_others:
-                    # add label "others" to self.casts
-                    self.casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
-                    self.candidates = candidate_json
+                    # add label "others" to casts
+                    casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
+                    candidates = candidate_json
                 else:
                     # remove label "others" in origin candidate_json
-                    self.candidates = candidate_json[candidate_json[0] != "others"]
+                    candidates = candidate_json[candidate_json[0] != "others"]
             
-                # self.all_data[mov] = [ self.candidates, self.casts ]
-                self.all_candidates[mov] = self.candidates
-                self.all_casts[mov] = self.casts
+                # self.all_data[mov] = [ candidates, casts ]
+                self.all_candidates[mov] = candidates
+                self.all_casts[mov] = casts
         
         elif action == 'test':
             pass
-            # '''
-            # Generated : self.all_candidates
-            #     total files table
-            #     ( used in __getitem__() / inference_csv.py / main_tri.py )
-            # '''
-            
-            # self.all_candidates = {}
-            
-            # for mov in self.movies:
-            #     movie_path = os.path.join(self.data_path, mov)
-
-            #     # format : ['tt1840309_0000.jpg', 'tt1840309_0001.jpg', ...]
-            #     self.candidates = os.listdir(os.path.join(movie_path, 'candidates'))
-            #     # testing has to keep "others", cannot drop
-            #     # self.casts = os.listdir(os.path.join(movie_path, 'cast'))
-            #     # self.casts.append('others')
-
-            #     self.all_candidates[mov] = self.candidates
-            #     # self.all_casts[mov] = self.casts
 
     def __len__(self):
         if self.action == 'train':
-            return self.candidates.shape[0]
+            return len(self.all_candidates[self.mv])
         
         elif self.action == 'test':
             return self.leng
 
-    def set_mov_name(self, mov):
-        self.movie_path = os.path.join(self.data_path, mov)
+    def set_mov_name_train(self, mov):
+        self.mv = mov
+        # self.leng = len(self.all_casts[self.mv])
+
+    def set_mov_name_test(self, mov):
+        self.movie_path = os.path.join(self.data_path, mov) # to get image path
         self.candidate_file_list = os.listdir(os.path.join(self.movie_path, 'candidates'))
         self.leng = len(self.candidate_file_list)
 
     def __getitem__(self, idx):
         if self.action == 'test':    
             '''
-              Return:
+            Return (old, indexing by movie):
               - images (torch.tensor) : all candidates transformed images 
               - file_name_list (list) : all candidates img file name (list of str (no ".jpg") )
                                     ['tt1840309_0000', 'tt1840309_0001', ...]
 
-              Return(new):
+            Return (new, indexing by img):
               - image (torch.tensor) : transformed image
               - img_name (str) : img file name (list of str (no ".jpg")
             '''
@@ -136,26 +121,8 @@ class TripletDataset(Dataset):
             if self.transform:
                 image = self.transform(image)
 
-            img_name = candidate_file[:-4]    # remove ".jpg"
-            
-            return image, img_name
-
-
-            # candidates = self.all_candidates[self.mv]
-            # images = torch.tensor([])
-            # file_name_list = []
-            # for indx, candidate_file in enumerate(candidates):
-            #     print('{} processing {}'.format(indx, candidate_file))
-                
-            #     movie_path = os.path.join(self.data_path, self.mv)
-            #     image_path = os.path.join(movie_path, 'candidates', candidate_file)
-            #     image = Image.open(image_path)
-
-            #     if self.transform:
-            #         image = self.transform(image)
-            #     images = torch.cat((images,image.unsqueeze(0)), dim=0)
-            #     file_name_list.append(candidate_file[:-4])  # remove ".jpg"
-            # return images, file_name_list
+            img_name = candidate_file[:-4]    # remove ".jpg"            
+            return image, img_name 
 
         elif self.action == 'train':
             '''
@@ -195,6 +162,7 @@ class TripletDataset(Dataset):
             # string label >> int label
             if self.mode == 'classify':
                 label_mapped = casts.index[casts[0] == cast].tolist()[0] 
+                # print('label check : [{} >> {}]'.format(cast, label_mapped))
             
             return image, label_mapped, index
     
@@ -320,7 +288,7 @@ def dataloader_unittest(debug=False):
     print("Classify setting: ")
     
     # (self, data_path, moviename, mode='classify', drop_others=True, transform=None, debug=False):
-    dataset = TripletDataset(
+    dataset = CandDataset(
         data_path = "./IMDb/train",
         moviename = "tt6518634",
         mode = 'classify',

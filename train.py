@@ -5,7 +5,7 @@ Created on Mon Jun 17 07:55:44 2019
 @author: Chun
 
 Usage:
-    python main_tri.py --dataroot <IMDb_folder_path> --mpath <model_output_path>
+    python train.py --dataroot <IMDb_folder_path> --mpath <model_output_path>
 """
 import torch
 import argparse
@@ -19,7 +19,7 @@ import torchvision.transforms as transforms
 
 # from model import feature_extractor
 from model_res50 import feature_extractor 
-from imdb import TripletDataset, CastDataset
+from imdb import CandDataset, CastDataset
 from tri_loss import triplet_loss
 import evaluate_rerank
 import final_eval
@@ -49,7 +49,8 @@ def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch,
 
         num_cast = len(label_cast[0]) - 1
         running_loss = 0.0
-        cand_data.mv = mov
+        cand_data.set_mov_name_train(mov)
+        # cand_data.mv = mov
 
         for j, (cand, label_cand, _) in enumerate(candloader, 1):    
             bs = cand.size()[0]
@@ -103,7 +104,9 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
             
             cand_out = torch.tensor([])
             index_out = torch.tensor([], dtype=torch.long)
-            cand_data.mv = mov
+
+            cand_data.set_mov_name_train(mov)
+            # cand_data.mv = mov
 
             # TODO: wrong shape of candidates features / names
 
@@ -178,13 +181,13 @@ def main(opt):
     device = torch.device("cuda:0")
     
     transform1 = transforms.Compose([
-                        # transforms.Resize((224,224), interpolation=3),
+                        transforms.Resize((224,224), interpolation=3),
                         transforms.ToTensor(),
                         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                              std=[0.229, 0.224, 0.225])
                                              ])
     # Candidates datas    
-    train_data = TripletDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
+    train_data = CandDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
                                   mode='classify',
                                   drop_others=True,
                                   transform=transform1,
@@ -195,7 +198,7 @@ def main(opt):
                             shuffle=True,
                             num_workers=0)
     
-    val_data = TripletDataset(opt.dataroot, os.path.join(opt.dataroot, 'val'),
+    val_data = CandDataset(opt.dataroot, os.path.join(opt.dataroot, 'val'),
                                   mode='classify',
                                   drop_others=False,
                                   transform=transform1,
@@ -299,7 +302,7 @@ if __name__ == '__main__':
     
     # I/O Setting (important !!!)
     parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
-    parser.add_argument('--log_path',  default='log_new', help='folder to output loss record')
+    parser.add_argument('--log_path',  default='log', help='folder to output loss record')
     parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
     # parser.add_argument('--gt_file', default='/media/disk1/EdwardLee/dataset/IMDb/val_GT.json', type=str, help='Directory of training set.')
     # parser.add_argument('--outdir', default='PCB', type=str, help='output model name')

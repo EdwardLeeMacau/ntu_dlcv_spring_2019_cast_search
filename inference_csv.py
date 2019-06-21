@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 import evaluate_rerank
 import final_eval
 import utils
-from imdb import CastDataset, TripletDataset
+from imdb import CastDataset, CandDataset
 # from model import feature_extractor
 from model_res50 import feature_extractor
 
@@ -125,7 +125,7 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
                         np.save(os.path.join(feature_path, "names.npy"), cast_file_name_list[0])
 
                     print("generating {}'s candidate features".format(mov))
-                    cand_data.set_mov_name(mov)
+                    cand_data.set_mov_name_test(mov)
                     cand_out = torch.tensor([])
                     cand_file_name_list = []
                     
@@ -203,7 +203,7 @@ def main(opt):
                                              std=[0.229, 0.224, 0.225])
                                              ])
     
-    test_data = TripletDataset(opt.dataroot, os.path.join(opt.dataroot, folder_name),
+    test_data = CandDataset(opt.dataroot, os.path.join(opt.dataroot, folder_name),
                                   mode='classify',
                                   drop_others=False,
                                   transform=transform1,
