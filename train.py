@@ -247,10 +247,10 @@ def main(opt):
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
     
     # testing pre-trained model mAP performance
-    val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, 0, opt, device)
-    record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%}\n'.format(0, opt.epochs, val_mAP)
-    print(record)
-    write_record(record, 'val_mAP.txt', opt.log_path)
+    # val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, 0, opt, device)
+    # record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%}\n'.format(0, opt.epochs, val_mAP)
+    # print(record)
+    # write_record(record, 'val_mAP.txt', opt.log_path)
 
     best_mAP = 0.0
     for epoch in range(1, opt.epochs + 1):
