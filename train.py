@@ -47,7 +47,7 @@ def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch,
         # print('cast size' , cast.size())
         # print(label_cast, type(label_cast))
 
-        num_cast = len(label_cast[0]) - 1
+        num_cast = len(label_cast[0])
         running_loss = 0.0
         cand_data.set_mov_name_train(mov)
         # cand_data.mv = mov
