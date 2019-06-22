@@ -19,10 +19,11 @@ import torchvision.transforms as transforms
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 
+import evaluate_gpu
 import evaluate_rerank
 import final_eval
 import utils
-from imdb import CastDataset, CandDataset
+from imdb import CastDataset, TripletDataset
 # from model import feature_extractor
 from model_res50 import feature_extractor
 
@@ -125,7 +126,7 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
                         np.save(os.path.join(feature_path, "names.npy"), cast_file_name_list[0])
 
                     print("generating {}'s candidate features".format(mov))
-                    cand_data.set_mov_name_test(mov)
+                    cand_data.set_mov_name(mov)
                     cand_out = torch.tensor([])
                     cand_file_name_list = []
                     
@@ -203,7 +204,7 @@ def main(opt):
                                              std=[0.229, 0.224, 0.225])
                                              ])
     
-    test_data = CandDataset(opt.dataroot, os.path.join(opt.dataroot, folder_name),
+    test_data = TripletDataset(opt.dataroot, os.path.join(opt.dataroot, folder_name),
                                   mode='classify',
                                   drop_others=False,
                                   transform=transform1,
@@ -243,7 +244,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
     parser.add_argument('--action', default='test', type=str, help='action type (test / val)')
     parser.add_argument('--out_csv',  default='./result.csv', help='output csv file name')
-    # parser.add_argument('--gt', type=str, help='if gt_file is exists, measure the mAP.')
+    parser.add_argument('--gt', type=str, help='if gt_file is exists, measure the mAP.')
     parser.add_argument('--save_feature', action='store_true', help='save new np features when processing')
     parser.add_argument('--load_feature', action='store_true', help='load old np features when processing')
     # Device Setting
@@ -265,6 +266,6 @@ if __name__ == '__main__':
     
     # if not os.path.exists(opt.gt):
     #     pass
-        # raise IOError("{} is not exists".format(opt.gt))
+    #     raise IOError("{} is not exists".format(opt.gt))
 
     main(opt)
