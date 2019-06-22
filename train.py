@@ -23,6 +23,7 @@ import torch.nn as nn
 from model_res50 import feature_extractor 
 from imdb import CandDataset, CastDataset
 from tri_loss import triplet_loss
+import evaluate
 import evaluate_rerank
 import final_eval
 import utils
@@ -133,10 +134,10 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data, mo
             
             candidate_name = cand_data.all_candidates[mov]
             candidate_name = candidate_name['index'].str[-18:-4].to_numpy()
-            # candidate_name = cand_data.all_data[mov][0]
-            # candidate_name = np.array([candidate_name.iat[int(index_out[x]), 0][-18:][:-4] 
-            #                             for x in range(cand_out.shape[0])])
-            result = evaluate_rerank.predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name)   
+            
+            result = evaluate.cosine_similarity(cast_feature, cast_name, candidate_feature, candidate_name)
+            # print(result)
+            # result = evaluate_rerank.predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name)   
             results.extend(result)
     
     with open('result.csv', 'w', newline=newline) as csvfile:

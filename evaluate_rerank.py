@@ -10,6 +10,7 @@ import os
 import time
 
 import numpy as np
+from numpy import linalg as LA
 import pandas as pd
 import scipy.io
 import torch
@@ -17,6 +18,7 @@ from tqdm import tqdm
 
 import final_eval
 import utils
+from evaluate import normalize_ndarray
 from re_ranking import re_ranking
 
 
@@ -127,10 +129,10 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
 def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, k1=20, k2=6, lambda_value=0.3) -> list:
     """
       Input
-      - cast_feature : numpy array[n, 2048] (float)
-      - cast_name : numpy array[n, ] (str)
-      - candidate_feature : numpy array[m, 2048] (float)
-      - candidate_name : numpy array[m, ] (str)
+      - cast_feature:       numpy array[n, 2048] (float)
+      - cast_name:          numpy array[n, ] (str)
+      - candidate_feature:  numpy array[m, 2048] (float)
+      - candidate_name:     numpy array[m, ] (str)
     """
 
     print("Cast_feat.shape: {}".format(cast_feature.shape))
@@ -138,12 +140,21 @@ def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, 
     print("Cand_feat.shape: {}".format(candidate_feature.shape))
     print("Cand_name.shape: {}".format(candidate_name.shape))
 
+    cast_feature      = cast_feature.reshape(cast_feaure.shape[0], -1)
+    candidate_feature = candidate_feature.reshape(candidate_feature.shape[0], -1)
+
+    cast_feature      = normalize_ndarray(cast_feature, 1)
+    candidate_feature = normalize_ndarray(candidate_feature, 1)
+
     q_g_distance = np.dot(cast_feature, np.transpose(candidate_feature))
     q_q_distance = np.dot(cast_feature, np.transpose(cast_feature))
     g_g_distance = np.dot(candidate_feature, np.transpose(candidate_feature))
     
     # Re_ranking() using L2 Distance as the result, smaller distance mean 'closer' with each other
     final_distance = re_ranking(q_g_distance, q_q_distance, g_g_distance, k1=k1, k2=k2, lambda_value=lambda_value)
+
+    print(final_distance)
+    print(index)
 
     result = []
     for j in range(final_distance.shape[0]):
