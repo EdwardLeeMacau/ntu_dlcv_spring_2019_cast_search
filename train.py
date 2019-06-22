@@ -62,7 +62,7 @@ def train(castloader: DataLoader, candloader: DataLoader, cand_data,
     
     movie_loss = 0.0
     
-    for i, (cast, label_cast, moviename, _) in enumerate(castloader, 1):
+    for i, (cast, label_cast, moviename) in enumerate(castloader, 1):
         moviename    = moviename[0]
         label_cast   = label_cast[0]
         num_cast     = len(label_cast)
@@ -119,7 +119,7 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
     results_rerank = []
 
     with torch.no_grad():
-        for i, (cast, label_cast, mov, img_names) in enumerate(castloader, 1):
+        for i, (cast, label_cast, mov, cast_names) in enumerate(castloader, 1):
             mov = mov[0]                        # Un-packing list
             
             cast = cast.to(device)              # cast.shape: 1, num_cast+1, 3, 448, 448
@@ -128,17 +128,16 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             cast_out = cast_out.detach().cpu().view(-1, feature_dim)
             
             label_cast = torch.tensor(label_cast).squeeze(0)
-
-            cand_out    = torch.tensor([])
-            cand_labels = torch.tensor([], dtype=torch.long)
-            index_out   = torch.tensor([], dtype=torch.long)
-
-            cand_data.set_mov_name_val(mov)
-
+            cast_names = [x[0] for x in cast_names]
+            
             print("[Validating] Number of candidates should be equal to: {}".format(
                 len(os.listdir(os.path.join(opt.dataroot, 'val', mov, 'candidates')))))
 
-            for j, (cand, label_cand, index) in enumerate(candloader):
+            cand_out    = torch.tensor([])
+            cand_labels = torch.tensor([], dtype=torch.long)
+            cand_names  = []
+            cand_data.set_mov_name_val(mov)
+            for j, (cand, cand_label, cand_name) in enumerate(candloader):
                 cand = cand.to(device)          # cand.shape: bs, 3, height, wigth
 
                 if feature_extractor is not None:
@@ -150,35 +149,33 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
                 out = out.detach().cpu().view(-1, feature_dim)
 
                 cand_out    = torch.cat((cand_out, out), dim=0)
-                cand_labels = torch.cat((cand_labels, label_cand), dim=0)
-                index_out   = torch.cat((index_out, index), dim=0)      
-
+                cand_labels = torch.cat((cand_labels, cand_label), dim=0)
+                cand_names.extend(cand_name)
+                
             cast_feature = cast_out.to(device)
             candidate_feature = cand_out.to(device)
-
-            # DEBUGS: 
-            # print(index_out.sort())
 
             # Calculate L2 Loss if needed.
             if criterion is not None:
                 cand_labels, indices = cand_labels.sort(dim=0)      # Sort the features by the labels
-                loss = criterion(candidate_feature[indices], cast_feature[cand_labels]).item()
+                noise = candidate_feature[-1].unsqueeze(0)
+                gt = torch.cat((cast_feature, noise), dim=0) 
+                
+                loss = criterion(candidate_feature[indices], gt[cand_labels]).item()
                 movie_loss += loss
                 print('[Validating] {}/{} {} processed, get {} features, loss {:.4f}'.format(i, len(castloader), mov, cand_out.size()[0], loss))
             else:
                 print('[Validating] {}/{} {} processed, get {} features.'.format(i, len(castloader), mov, cand_out.size()[0]))
-
-            # Getting the labels name
-            cast_name = img_names.to_numpy()
-
-            # Getting the labels name from dataframe
-            # cast_name = cast_data.casts_df
-            # cast_name = cast_name['index'].str[-23:-4].to_numpy()
             
+            # Getting the labels name from dataframe
+            # Getting the labels name
+            cast_names = np.asarray(cast_names, dtype=object)
+            cand_names = np.asarray(cand_names, dtype=object)
+
             candidate_df = cand_data.all_candidates[mov]
             candidate_name = candidate_df['index'].str[-18:-4].to_numpy()
             
-            result = evaluate.cosine_similarity(cast_feature, cast_name, candidate_feature, candidate_name)
+            result = evaluate.cosine_similarity(cast_feature, cast_names, candidate_feature, candidate_name)
             results_cosine.extend(result)
 
             # result = evaluate_rerank.predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name)
@@ -186,13 +183,13 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
 
     # Generate the csv with submission format
     with open('result_cosine.csv', 'w', newline=newline) as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=['Id','Rank'])
+        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
         writer.writeheader()
         for r in results_cosine:
             writer.writerow(r)
     
     with open('result_rerank.csv', 'w', newline=newline) as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=['Id','Rank'])
+        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
         writer.writeheader()
         for r in results_cosine:
             writer.writerow(r)
@@ -200,14 +197,14 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
     # Calculate mAP
     mAP, AP_dict = final_eval.eval('result_cosine.csv', os.path.join(opt.dataroot , "val_GT.json"))
     print('[Cosine] mAP: {:.2%}'.format(mAP))
+
+    for key, val in AP_dict.items():
+        record = '[Epoch {}] AP({}): {:.2%}'.format(epoch, key, val)
+        print(record)
+        write_record(record, 'val_seperate_AP.txt', opt.log_path)
     
     mAP, AP_dict = final_eval.eval('result_rerank.csv', os.path.join(opt.dataroot , "val_GT.json"))
     print('[Rerank] mAP: {:.2%}'.format(mAP))
-    
-    # for key, val in AP_dict.items():
-    #     record = '[Epoch {}] AP({}): {:.2%}'.format(epoch, key, val)
-    #     print(record)
-    #     write_record(record, 'val_seperate_AP.txt', opt.log_path)
 
     return mAP, movie_loss / len(candloader)
 
@@ -249,10 +246,10 @@ def main(opt):
     # Dataset initialize        # 
     # ------------------------- #
 
-    if opt.features:
+    if opt.load_features:
         transform = transforms.ToTensor()
     
-    if not opt.features:
+    if not opt.load_features:
         transform = transforms.Compose([
             transforms.Resize((224,224), interpolation=3),
             transforms.ToTensor(),
@@ -264,46 +261,51 @@ def main(opt):
         data_path=os.path.join(opt.dataroot, 'train'),
         drop_others=True,
         transform=transform,
-        action='train'
+        action='train',
+        load_feature=opt.load_features
     )
     
     val_data = CandDataset(
         data_path=os.path.join(opt.dataroot, 'val'),
         drop_others=False,
         transform=transform,
-        action='val'
+        action='val',
+        load_feature=opt.load_features
     )
-
-    train_cand = DataLoader(train_data, batch_size=opt.batchsize, shuffle=True, num_workers=opt.threads)
-    val_cand   = DataLoader(val_data, batch_size=opt.batchsize, shuffle=False, num_workers=opt.threads)
 
     # Cast Datas
     train_cast_data = CastDataset(
         data_path=os.path.join(opt.dataroot, 'train'),
         drop_others=True,
         transform=transform,
-        action='train'
+        action='train',
+        load_feature=opt.load_features
     )
 
     val_cast_data = CastDataset(
         data_path=os.path.join(opt.dataroot, 'val'),
         drop_others=False,
         transform=transform,
-        action='val'
+        action='val',
+        load_feature=opt.load_features
     )
-
+    
+    train_cand = DataLoader(train_data, batch_size=opt.batchsize, shuffle=True, num_workers=opt.threads)
+    val_cand   = DataLoader(val_data, batch_size=opt.batchsize, shuffle=False, num_workers=opt.threads)
     train_cast = DataLoader(train_cast_data, batch_size=1, shuffle=False, num_workers=opt.threads)
     val_cast   = DataLoader(val_cast_data, batch_size=1, shuffle=False, num_workers=opt.threads)
     
     # ------------------------- # 
     # Model, optim initialize   # 
     # ------------------------- #
-    classifier = Classifier(2048).to(device)
+    classifier = Classifier(fc_in_features=2048, fc_out=opt.feature_dim).to(device)
     feature_extractor = None
     params = [{'params': classifier.parameters()}]
-    if not opt.features:
+    if not opt.load_features:
+        # one way to set difference learning rate:
+        # params.append({'params': feature_extractor.parameters(), 'lr': 1e-3})
         feature_extractor = FeatureExtractorFace().to(device)
-        params.append({'params': classifier.parameters(), 'lr': 1e-3})
+        params.append({'params': feature_extractor.parameters()})
     
     optimizer = torch.optim.Adam(params,
         lr=opt.lr,
@@ -389,7 +391,7 @@ if __name__ == '__main__':
     parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
     parser.add_argument('--log_path', default='log', help='folder to output logs')
     parser.add_argument('--dataroot', default='./IMDb_Resize/', type=str, help='Directory of dataroot')
-    parser.add_argument('--features', action='store_true', help='If true, dataloader will load the image in features')
+    parser.add_argument('--load_features', action='store_true', help='If true, dataloader will load the image in features')
     # parser.add_argument('--gt_file', default='./IMDb_Resize/val_GT.json', type=str, help='Directory of training set.')
     # parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
     
