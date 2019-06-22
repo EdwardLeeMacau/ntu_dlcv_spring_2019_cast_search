@@ -60,6 +60,11 @@ import utils
 # To pop the candidates
 class CandDataset(Dataset):
     def __init__(self, data_path, drop_others=True, transform=None, debug=False, action='train', load_feature=False):
+        '''
+        - drop_others : only used when aciton = 'train', optional ('val', 'test', 'save' will not drop anyway)
+        '''
+        assert action in ('train', 'val', 'test', 'save'), "Wrong params 'action'"
+
         self.root_path = os.path.dirname(data_path) # IMDb
         self.data_path = data_path                  # IMDb/train
         self.drop_others = drop_others
@@ -86,12 +91,14 @@ class CandDataset(Dataset):
                 candidate_json = pd.read_json(os.path.join(data_path, mov, 'candidate.json'),
                                     orient='index', typ='series').reset_index()
                 casts = pd.read_json(os.path.join(data_path, mov, 'cast.json'),
-                                    orient='index', typ='series') .reset_index()
-                num_casts = casts.shape[0]
+                                    orient='index', typ='series').reset_index()
+                self.num_casts = casts.shape[0]
             
                 if not drop_others:
                     # add label "others" to casts
-                    casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
+                    # casts.loc[self.num_casts] = ['no_exist_others.jpg', 'others']
+
+                    # dont actually add "others" to casts, but handle at __getietm__()
                     candidates = candidate_json
                 else:
                     # remove label "others" in origin candidate_json
@@ -101,7 +108,7 @@ class CandDataset(Dataset):
                 self.all_candidates[mov] = candidates
                 self.all_casts[mov] = casts
         
-        elif action in ('save'):
+        elif action in ('save', 'val'):
             self.all_candidates = {}
             self.all_casts = {}
             
@@ -112,7 +119,7 @@ class CandDataset(Dataset):
                 casts = pd.read_json(os.path.join(data_path, mov, 'cast.json'),
                                     orient='index', typ='series').reset_index()
                 
-                self.all_candidates[mov] = candidates_json
+                self.all_candidates[mov] = candidate_json
                 self.all_casts[mov] = casts       
 
         elif action in 'test':
@@ -122,18 +129,21 @@ class CandDataset(Dataset):
         if self.action == 'train':
             return len(self.all_candidates[self.mv])
         
-        elif self.action in ['test', 'save']:
+        elif self.action in ['test', 'save', 'val']:
             return self.leng
 
     def set_mov_name_train(self, mov):
         self.mv = mov
         # self.leng = len(self.all_casts[self.mv])
 
-    def set_mov_name_save(self, mov):
+    def set_mov_name_val(self, mov):
         self.mv = mov
         self.candidate_df = self.all_candidates[mov]    # dataframe.columns = ['index', 0] (files, label)
         self.cast_df = self.all_casts[mov]              # dataframe.columns = ['index', 0] (files, label)
         self.leng = len(self.candidate_df)
+
+    def set_mov_name_save(self, mov):
+        self.set_mov_name_val(mov)
 
     def set_mov_name_test(self, mov):
         self.mv = mov
@@ -182,11 +192,11 @@ class CandDataset(Dataset):
 
             # string label >> int label
             label_mapped = self.cast_df.index[self.cast_df[0] == label_str].tolist()
+            # handle : if no "others" in self.cast_df, return self.num_casts as label (old labes : 0 ~ self.num_casts - 1)
             label_mapped = label_mapped[0] if len(label_mapped) > 0 else self.num_casts
             
             if self.action == 'save':
-                return image, label_mapped, img_name
-            
+                return image, label_mapped, img_name         
             if self.action == 'val':
                 return image, label_mapped, idx
 
@@ -220,6 +230,11 @@ class CandDataset(Dataset):
 # To pop the cast images
 class CastDataset(Dataset):
     def __init__(self, data_path, drop_others=True, transform=None, debug=False, action='train', load_feature=False):
+        '''
+        - drop_others : only used when aciton = 'train', optional ('val', 'test', 'save' will not drop anyway)
+        '''
+        assert action in ('train', 'val', 'test', 'save'), "Wrong params 'action'"
+
         self.root_path = os.path.dirname(data_path) # IMDb
         self.data_path = data_path                  # IMDb/train 
         self.drop_others = drop_others
@@ -232,7 +247,6 @@ class CastDataset(Dataset):
         if action in ('train'):
             self.all_candidates = {}
             self.all_casts = {}
-            
             for mov in self.movies:
                 # Read json as pandas.DataFrame and divide candidates and others
                 candidate_json = pd.read_json(os.path.join(data_path, mov, 'candidate.json'),
@@ -256,7 +270,6 @@ class CastDataset(Dataset):
         elif action in ('save', 'val'):
             self.all_candidates = {}
             self.all_casts = {}
-            
             for mov in self.movies:
                 # Read json as pandas.DataFrame and divide candidates and others
                 candidate_json = pd.read_json(os.path.join(data_path, mov, 'candidate.json'),
@@ -266,8 +279,9 @@ class CastDataset(Dataset):
                 
                 self.all_candidates[mov] = candidate_json
                 self.all_casts[mov] = casts
-
         # if action in 'test': Do nothing
+        elif action in ('test'):
+            pass
 
     def __len__(self):
         return len(self.movies)
@@ -306,30 +320,62 @@ class CastDataset(Dataset):
         elif self.action in ('save', 'val'):
             # cast: all peoples, no others
             # candidates: all images
-            raise NotImplementedError
-
-        elif self.action == 'train':
+            
             # Read json as pandas.DataFrame and divide candidates and others
-            candidates_df = self.all_candidates[moviename]
             casts_df      = self.all_casts[moviename]            
-            self.casts = casts_df
+            # candidates_df = self.all_candidates[moviename]
+            
+            # self.casts = casts_df
 
             num_casts = casts_df.shape[0]
-
-            if not self.drop_others:
-                # If don't drop_others, choose 1 images('others') randomly
-                others = candidates_df[candidates_df[0] == "others"]
-                rn = int(torch.randint(0, len(others), (1,)).tolist()[0])
-                casts_df.loc[num_casts] = [others.iat[rn, 0], 'others']
-                num_casts += 1
 
             images = torch.tensor([])
             labels = torch.tensor([], dtype=torch.long)
                             
             img_names = []
             for idx in range(num_casts):
-                image_path, cast = casts_df.iat[idx, 0], casts_df.iat[idx, 1]
+                image_path, label_str = casts_df.iat[idx, 0], casts_df.iat[idx, 1]
                 img_name = image_path.split('/')[-1].split('.')[0]
+                img_names.append(img_name)
+
+                image = Image.open(os.path.join(self.root_path, image_path))
+                if self.transform:
+                    image = self.transform(image)
+                images = torch.cat((images, image.unsqueeze(0)), dim=0)
+
+                # string label >> int label
+                label_mapped = casts_df.index[casts_df[0] == label_str].tolist()
+                # handle : if no "others" in cast_df, return self.num_casts as label (old labes : 0 ~ self.num_casts - 1)
+                label_mapped = label_mapped[0] if len(label_mapped) > 0 else num_casts
+                # label_mapped = torch.tensor(label_mapped)
+                labels = torch.cat((labels, label_mapped), dim=0)
+            return images, labels, moviename, img_names
+
+        elif self.action == 'train':
+            # Read json as pandas.DataFrame and divide candidates and others
+            # candidates_df = self.all_candidates[moviename]
+            casts_df      = self.all_casts[moviename]            
+
+            num_casts = casts_df.shape[0]
+
+            if not self.drop_others:
+                # 1. 
+                # If don't drop_others, choose 1 images('others') randomly
+                # others = candidates_df[candidates_df[0] == "others"]
+                # rn = int(torch.randint(0, len(others), (1,)).tolist()[0])
+                # casts_df.loc[num_casts] = [others.iat[rn, 0], 'others']
+                # num_casts += 1
+
+                # 2. handle when mapping label 
+                pass
+
+            images = torch.tensor([])
+            labels = torch.tensor([], dtype=torch.long)
+                            
+            # img_names = []
+            for idx in range(num_casts):
+                image_path, cast = casts_df.iat[idx, 0], casts_df.iat[idx, 1]
+                # img_name = image_path.split('/')[-1].split('.')[0]
 
                 image = Image.open(os.path.join(self.root_path, image_path))
                 if self.transform:
@@ -338,14 +384,18 @@ class CastDataset(Dataset):
 
                 # string label >> int label
                 label_mapped = casts_df.index[casts_df[0] == cast].tolist()
-                label_mapped = torch.tensor(label_mapped)
-                labels = torch.cat((labels, label_mapped), dim=0)
-                img_names.append(img_name)
+                # handle : if no "others" in cast_df, return self.num_casts as label (old labes : 0 ~ self.num_casts - 1)
+                label_mapped = label_mapped[0] if len(label_mapped) > 0 else num_casts
+                # label_mapped = torch.tensor(label_mapped)
                 
-            return images, labels, moviename, img_names
+                labels = torch.cat((labels, label_mapped), dim=0)
+                # img_names.append(img_name)
+                
+            return images, labels, moviename    #, img_names
 
 def dataloader_unittest(debug=False):
     for mode, drop in [('train', True), ('val', False), ('save', False), ('test', False)]:
+
         print("Training setting: {}".format(mode))
 
         cand_dataset = CandDataset(
@@ -376,49 +426,85 @@ def dataloader_unittest(debug=False):
         print("Length of dataset: {}".format(len(cast_dataset)))
         print("Length of dataset: {}".format(len(cand_dataset)))
 
-        for index, (image, label) in enumerate(cast_loader, 1):
+        if mode == 'train':
+            for index, (images, labels, moviename) in enumerate(cast_loader, 1):
+                cand_dataset.set_mov_name_train(moviename)
+                for j, (image, label_mapped, index) in enumerate(cand_loader, 1):
+                    print("cast images.shape: {}".format(images.shape))
+                    print("cand 0 image.shape: {}".format(image.shape))
+                    print("cast labels.shape: {}".format(labels.shape))
+                    print("cand label_mapped.shape: {}".format(label_mapped.shape))
+                    print("moviename :", moviename)
+                    print("index :", index)
+                    # print("Label: {}".format(label))
+                    break
+        elif mode == 'val':
+            for index, (images, labels, moviename, img_names) in enumerate(cast_loader, 1):
+                cand_dataset.set_mov_name_val(moviename)
+                for j, (image, label_mapped, idx) in enumerate(cand_loader, 1):
+                    print("cast images.shape: {}".format(images.shape))
+                    print("cand 0 image.shape: {}".format(image.shape))
+                    print("cast labels.shape: {}".format(labels.shape))
+                    print("cand label_mapped.shape: {}".format(label_mapped.shape))
+                    print("moviename :", moviename)
+                    print("idx :", idx)
+                    # print("Label: {}".format(label))
+                    break 
+        elif mode == 'save':
+            for index, (images, labels, moviename, img_names) in enumerate(cast_loader, 1):
+                cand_dataset.set_mov_name_save(moviename)
+                for j, (image, label_mapped, img_name) in enumerate(cand_loader, 1):
+                    print("cast images.shape: {}".format(images.shape))
+                    print("cand 0 image.shape: {}".format(image.shape))
+                    print("cast labels.shape: {}".format(labels.shape))
+                    print("cand label_mapped.shape: {}".format(label_mapped.shape))
+                    print("moviename :", moviename)
+                    print("img_name :", img_name)
+                    # print("Label: {}".format(label))
+                    break        
+        elif mode == 'test':
+            for index, (images, moviename, file_name_list) in enumerate(cast_loader, 1):
+                cand_dataset.set_mov_name_test(moviename)
+                for j, (image, img_name) in enumerate(cand_loader, 1):
+                    print("cast images.shape: {}".format(images.shape))
+                    print("cand 0 image.shape: {}".format(image.shape))
+                    print("moviename :", moviename)
+                    print("cast file_name_list :", file_name_list)
+                    print("cand img_name :", img_name)
+                    break
 
-            for index, (image, label) in enumerate(cand_loader, 1):
-                print("Image.shape: {}".format(image.shape))
-                print("Label.shape: {}".format(label.shape))
-                # print("Label: {}".format(label))
-                print()
+        print("Finish unit testing of mode {}\n\n".format(mode))
 
-                # if "others" in label:
-                # if 198 in label:   # "others" mapped to 198
-                #     print('dataloader unitest finished, has 198("others") in labels.')
-                break
 
-    '''
-    print("Features setting: ")
 
-    dataset = IMDbTrainset(
-        movie_path = "./IMDb/val",
-        feature_path = None,
-        label_path = "./IMDb/val_GT.json",
-        mode = 'features',
-        debug = debug,
-        transform = transforms.Compose([
-        transforms.Resize((384,192), interpolation=3),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ]))
+    # print("Features setting: ")
 
-    dataloader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=0)
+    # dataset = IMDbTrainset(
+    #     movie_path = "./IMDb/val",
+    #     feature_path = None,
+    #     label_path = "./IMDb/val_GT.json",
+    #     mode = 'features',
+    #     debug = debug,
+    #     transform = transforms.Compose([
+    #     transforms.Resize((384,192), interpolation=3),
+    #     transforms.ToTensor(),
+    #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    # ]))
 
-    print("Length of dataset: {}".format(len(dataset)))
+    # dataloader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=0)
 
-    for index, (image) in enumerate(dataloader, 1):
-        print("Image.shape: {}".format(image.shape))
-        # print("Label.shape: {}".format(label.shape))
-        # print("Label: {}".format(label))
-        print()
+    # print("Length of dataset: {}".format(len(dataset)))
 
-        # if "others" in label:
-        # if 198 in label:   # "others" mapped to 198
-        #     print('dataloader unitest finished, has 198("others") in labels.')
-        break
-    '''
+    # for index, (image) in enumerate(dataloader, 1):
+    #     print("Image.shape: {}".format(image.shape))
+    #     # print("Label.shape: {}".format(label.shape))
+    #     # print("Label: {}".format(label))
+    #     print()
+
+    #     # if "others" in label:
+    #     # if 198 in label:   # "others" mapped to 198
+    #     #     print('dataloader unitest finished, has 198("others") in labels.')
+    #     break
 
 if __name__ == "__main__":
     dataloader_unittest()
