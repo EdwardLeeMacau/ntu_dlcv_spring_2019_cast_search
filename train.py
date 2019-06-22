@@ -239,7 +239,7 @@ def write_record(record, filename: str, folder: str):
 # main function #
 # ------------- #
 def main(opt):
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu)
+    os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpu
     device = torch.device("cuda")
     
     # ------------------------- # 
@@ -406,7 +406,7 @@ if __name__ == '__main__':
     # parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
     
     # Device Setting
-    parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
+    parser.add_argument('--gpu', default='0', type=str, help='')
     parser.add_argument('--threads', default=0, type=int)
 
     # Others Setting
