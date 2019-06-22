@@ -202,10 +202,7 @@ class CandDataset(Dataset):
             # handle : if no "others" in self.cast_df, return num_casts as label (old labes : 0 ~ self.num_casts - 1)
             label_mapped = label_mapped[0] if len(label_mapped) > 0 else num_casts
             
-            if self.action == 'save':
-                return image, label_mapped, img_name         
-            if self.action == 'val':
-                return image, label_mapped, idx
+            return image, label_mapped, img_name
 
         elif self.action == 'train':
             '''
@@ -453,7 +450,9 @@ def dataloader_unittest(debug=False):
                 print("cast images.shape: {}".format(images.shape))
                 print("cand 0 image.shape: {}".format(image.shape))
                 print("cast labels.shape: {}".format(labels.shape))
+                print("cast labels: {}".format(labels))
                 print("cand label_mapped.shape: {}".format(label_mapped.shape))
+                print("cand label_mapped: {}".format(label_mapped))
                 print("moviename :", moviename)
                 print("img_name :", img_name)
                 print()
@@ -514,13 +513,13 @@ def dataloader_unittest(debug=False):
             for index, (images, labels, moviename, img_names) in enumerate(cast_loader, 1):
                 moviename = moviename[0]    # handle key error, moviename = ('tt1345836' ,) to 'tt1345836'
                 cand_dataset.set_mov_name_val(moviename)
-                for j, (image, label_mapped, idx) in enumerate(cand_loader, 1):
+                for j, (image, label_mapped, img_name) in enumerate(cand_loader, 1):
                     print("cast images.shape: {}".format(images.shape))
                     print("cand 0 image.shape: {}".format(image.shape))
                     print("cast labels.shape: {}".format(labels.shape))
                     print("cand label_mapped.shape: {}".format(label_mapped.shape))
                     print("moviename :", moviename)
-                    print("idx :", idx)
+                    print("img_name :", img_name)
                     print()
                     break
                 break       
