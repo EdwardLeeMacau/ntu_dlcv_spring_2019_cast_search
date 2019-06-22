@@ -60,7 +60,7 @@ def extractor_features(castloader, candloader, cast_data, cand_data, Feature_ext
 
             # 2. Generate candidate features
             print("generating {}'s candidate features".format(mov))
-            cand_data.set_mov_name(mov)
+            cand_data.set_mov_name_test(mov)
             cand_out = torch.tensor([])
             cand_file_name_list = []
             for j, (cand, cand_file_name_tuple) in enumerate(candloader):
