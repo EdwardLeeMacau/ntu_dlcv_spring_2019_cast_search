@@ -130,7 +130,7 @@ def test(castloader, candloader, cast_data, cand_data, Feature_extractor, Featur
                         np.save(os.path.join(feature_path, "names.npy"), cast_file_name_list[0])
 
                     print("generating {}'s candidate features".format(mov))
-                    cand_data.set_mov_name(mov)
+                    cand_data.set_mov_name_test(mov)
                     cand_out = torch.tensor([])
                     cand_file_name_list = []
                     
