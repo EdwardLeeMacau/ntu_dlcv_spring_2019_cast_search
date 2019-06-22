@@ -95,7 +95,7 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
     feature_extractor.eval()
     classifier.eval()
     
-    loss = 0.0
+    movie_loss = 0.0
     results = []
 
     with torch.no_grad():
@@ -128,8 +128,6 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
                 cand_labels = torch.cat((cand_labels, label_cand), dim=0)
                 index_out   = torch.cat((index_out, index), dim=0)      
 
-            print('[Validating] {}/{} {} processed, get {} features'.format(i, len(castloader), mov, cand_out.size()[0]))
-
             cast_feature = cast_out.to(device)
             candidate_feature = cand_out.to(device)
 
@@ -139,7 +137,7 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             # Calculate L2 Loss if needed.
             if criterion is not None:
                 cand_labels, indices = cand_labels.sort(dim=0)      # Sort the features by the labels
-                loss += criterion(candidate_feature[indices], cast_feature[cand_labels]).item()
+                loss = criterion(candidate_feature[indices], cast_feature[cand_labels]).item()
 
             # Getting the labels name from dataframe
             cast_name = cast_data.casts
@@ -151,7 +149,12 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             result = evaluate.cosine_similarity(cast_feature, cast_name, candidate_feature, candidate_name)
             # result = evaluate_rerank.predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name)   
             results.extend(result)
-    
+            
+            if criterion is not None:
+                print('[Validating] {}/{} {} processed, get {} features, loss {:.4f}'.format(i, len(castloader), mov, cand_out.size()[0], loss))
+            else:
+                print('[Validating] {}/{} {} processed, get {} features.'.format(i, len(castloader), mov, cand_out.size()[0]))
+
     with open('result.csv', 'w', newline=newline) as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=['Id','Rank'])
         writer.writeheader()
