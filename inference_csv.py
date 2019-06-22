@@ -194,10 +194,7 @@ def main(opt):
     os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu)
     device = torch.device("cuda:0")
 
-    if opt.action == 'test':
-        folder_name = 'test_resize'
-    elif opt.action == 'val':
-        folder_name = 'val'
+    folder_name = opt.action
 
     if opt.save_feature and opt.load_feature:
         raise ValueError('Cannot save and load features simultanesouly, please choose one of them')

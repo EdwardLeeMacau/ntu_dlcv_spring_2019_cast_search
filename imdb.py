@@ -16,7 +16,7 @@
     |---|---<movie_name>/
     | ...
     |
-    |---test_resize/
+    |---test/
     |   |---<movie_name>/
     |   |   |---candidates/
     |   |   |   |---<id>.jpg
@@ -26,7 +26,7 @@
     ...
 
     IMDb/
-    |---test_resize/
+    |---test/
     |   |---<movie_name>/
     |   |   |---candidates/
     |   |   |   |---features.npy
@@ -330,8 +330,7 @@ class CastDataset(Dataset):
             num_casts = casts_df.shape[0]
 
             images = torch.tensor([])
-            labels = torch.tensor([], dtype=torch.long)
-                            
+            label_list = []
             img_names = []
             for idx in range(num_casts):
                 image_path, label_str = casts_df.iat[idx, 0], casts_df.iat[idx, 1]
@@ -348,7 +347,9 @@ class CastDataset(Dataset):
                 # handle : if no "others" in cast_df, return self.num_casts as label (old labes : 0 ~ self.num_casts - 1)
                 label_mapped = label_mapped[0] if len(label_mapped) > 0 else num_casts
                 # label_mapped = torch.tensor(label_mapped)
-                labels = torch.cat((labels, label_mapped), dim=0)
+                label_list.append(label_mapped)
+            
+            labels = torch.tensor(label_list, dtype=torch.long)   
             return images, labels, moviename, img_names
 
         elif self.action == 'train':
@@ -394,12 +395,65 @@ class CastDataset(Dataset):
             return images, labels, moviename    #, img_names
 
 def dataloader_unittest(debug=False):
+
+    print('Save mode testing')
+
+    mode, drop = ('save', False)
+
+    for datapath_name in ['train', 'val', 'test']:
+
+        print("Testing save '{}'".format(datapath_name))
+
+        cand_dataset = CandDataset(
+            data_path = "./IMDb_resize/{}".format(datapath_name),
+            transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ]), 
+            drop_others=drop,
+            action='save',
+            load_feature=False
+        )
+
+        cast_dataset = CastDataset(
+            data_path = "./IMDb_resize/{}".format(datapath_name),
+            transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ]),
+            drop_others=drop,
+            action='save',
+            load_feature=False
+        )
+
+        cand_loader = DataLoader(cand_dataset, batch_size=8, shuffle=False, num_workers=0)
+        cast_loader = DataLoader(cast_dataset, batch_size=8, shuffle=False, num_workers=0)
+
+        print("Length of cast dataset: {}".format(len(cast_dataset)))
+        
+        # cannot test in this way, because len of cand_dataset is decided by moviename dynamicly
+        # print("Length of cand dataset: {}".format(len(cand_dataset)))
+
+        for index, (images, labels, moviename, img_names) in enumerate(cast_loader, 1):
+            cand_dataset.set_mov_name_save(moviename)
+            for j, (image, label_mapped, img_name) in enumerate(cand_loader, 1):
+                print("cast images.shape: {}".format(images.shape))
+                print("cand 0 image.shape: {}".format(image.shape))
+                print("cast labels.shape: {}".format(labels.shape))
+                print("cand label_mapped.shape: {}".format(label_mapped.shape))
+                print("moviename :", moviename)
+                print("img_name :", img_name)
+                # print("Label: {}".format(label))
+                break
+
+    ########################################################3
+
     for mode, drop in [('train', True), ('val', False), ('save', False), ('test', False)]:
 
         print("Training setting: {}".format(mode))
 
         cand_dataset = CandDataset(
-            data_path = "./IMDb_Resize/train",
+            data_path = "./IMDb_resize/{}".format(mode),
             transform = transforms.Compose([
                     transforms.ToTensor(),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -410,7 +464,7 @@ def dataloader_unittest(debug=False):
         )
 
         cast_dataset = CastDataset(
-            data_path = "./IMDb_Resize/train",
+            data_path = "./IMDb_resize/{}".format(mode),
             transform = transforms.Compose([
                     transforms.ToTensor(),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -423,8 +477,10 @@ def dataloader_unittest(debug=False):
         cand_loader = DataLoader(cand_dataset, batch_size=8, shuffle=False, num_workers=0)
         cast_loader = DataLoader(cast_dataset, batch_size=8, shuffle=False, num_workers=0)
 
-        print("Length of dataset: {}".format(len(cast_dataset)))
-        print("Length of dataset: {}".format(len(cand_dataset)))
+        print("Length of cast dataset: {}".format(len(cast_dataset)))
+        
+        # cannot test in this way, because len of cand_dataset is decided by moviename dynamicly
+        # print("Length of cand dataset: {}".format(len(cand_dataset)))
 
         if mode == 'train':
             for index, (images, labels, moviename) in enumerate(cast_loader, 1):
@@ -449,19 +505,7 @@ def dataloader_unittest(debug=False):
                     print("moviename :", moviename)
                     print("idx :", idx)
                     # print("Label: {}".format(label))
-                    break 
-        elif mode == 'save':
-            for index, (images, labels, moviename, img_names) in enumerate(cast_loader, 1):
-                cand_dataset.set_mov_name_save(moviename)
-                for j, (image, label_mapped, img_name) in enumerate(cand_loader, 1):
-                    print("cast images.shape: {}".format(images.shape))
-                    print("cand 0 image.shape: {}".format(image.shape))
-                    print("cast labels.shape: {}".format(labels.shape))
-                    print("cand label_mapped.shape: {}".format(label_mapped.shape))
-                    print("moviename :", moviename)
-                    print("img_name :", img_name)
-                    # print("Label: {}".format(label))
-                    break        
+                    break       
         elif mode == 'test':
             for index, (images, moviename, file_name_list) in enumerate(cast_loader, 1):
                 cand_dataset.set_mov_name_test(moviename)
@@ -475,36 +519,6 @@ def dataloader_unittest(debug=False):
 
         print("Finish unit testing of mode {}\n\n".format(mode))
 
-
-
-    # print("Features setting: ")
-
-    # dataset = IMDbTrainset(
-    #     movie_path = "./IMDb/val",
-    #     feature_path = None,
-    #     label_path = "./IMDb/val_GT.json",
-    #     mode = 'features',
-    #     debug = debug,
-    #     transform = transforms.Compose([
-    #     transforms.Resize((384,192), interpolation=3),
-    #     transforms.ToTensor(),
-    #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    # ]))
-
-    # dataloader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=0)
-
-    # print("Length of dataset: {}".format(len(dataset)))
-
-    # for index, (image) in enumerate(dataloader, 1):
-    #     print("Image.shape: {}".format(image.shape))
-    #     # print("Label.shape: {}".format(label.shape))
-    #     # print("Label: {}".format(label))
-    #     print()
-
-    #     # if "others" in label:
-    #     # if 198 in label:   # "others" mapped to 198
-    #     #     print('dataloader unitest finished, has 198("others") in labels.')
-    #     break
 
 if __name__ == "__main__":
     dataloader_unittest()
