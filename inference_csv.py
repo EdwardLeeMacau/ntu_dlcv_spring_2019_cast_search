@@ -19,11 +19,10 @@ import torchvision.transforms as transforms
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 
-import evaluate_gpu
 import evaluate_rerank
 import final_eval
 import utils
-from imdb import CastDataset, TripletDataset
+from imdb import CastDataset, CandDataset
 # from model import feature_extractor
 from model_res50 import feature_extractor
 
@@ -204,7 +203,7 @@ def main(opt):
                                              std=[0.229, 0.224, 0.225])
                                              ])
     
-    test_data = TripletDataset(opt.dataroot, os.path.join(opt.dataroot, folder_name),
+    test_data = CandDataset(opt.dataroot, os.path.join(opt.dataroot, folder_name),
                                   mode='classify',
                                   drop_others=False,
                                   transform=transform1,
