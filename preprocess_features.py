@@ -5,7 +5,7 @@
   Synopsis     [ To inference trained model with images generate features and save to .npy file ]
 
   Example:
-    python3 preprocess_features.py --dataroot ./IMDb_resize/ --folder_name train
+    python3 preprocess_features.py --model origin --dataroot ./IMDb_resize/ --folder_name train
 """
 import argparse
 import csv
@@ -37,8 +37,9 @@ def extractor_features(castloader, candloader, cast_data, cand_data, Feature_ext
     '''
     print('Start Extracting features of {}ing dataset ... '.format(opt.folder_name))    
     folder_name = opt.folder_name
-    os.makedirs('./feature_np/', exist_ok=True)
-    os.makedirs('./feature_np/{}/'.format(folder_name), exist_ok=True)
+    model = opt.model
+    # os.makedirs('./feature_np/', exist_ok=True)
+    os.makedirs('./feature_np/{}/{}/'.format(model, folder_name), exist_ok=True)
     
     Feature_extractor.eval()
     with torch.no_grad():
@@ -53,7 +54,7 @@ def extractor_features(castloader, candloader, cast_data, cand_data, Feature_ext
             cast_out = cast_out.detach().cpu().view(-1, 2048)
             casts_features = cast_out.numpy()
             # Save cast features 
-            feature_path = './feature_np/{}/{}/cast/'.format(folder_name, mov)
+            feature_path = './feature_np/{}/{}/{}/cast/'.format(model, folder_name, mov)
             os.makedirs(feature_path, exist_ok=True)
             np.save(os.path.join(feature_path, "features.npy"), casts_features)
             np.save(os.path.join(feature_path, "names.npy"), cast_file_name_list[0])
@@ -71,7 +72,7 @@ def extractor_features(castloader, candloader, cast_data, cand_data, Feature_ext
                 cand_out = torch.cat((cand_out, out), dim=0)
             candidates_features = cand_out.numpy()
             # Save candidates features
-            feature_path = './feature_np/{}/{}/candidates/'.format(folder_name, mov)
+            feature_path = './feature_np/{}/{}/{}/candidates/'.format(model, folder_name, mov)
             os.makedirs(feature_path, exist_ok=True)
             np.save(os.path.join(feature_path, "features.npy"), candidates_features)
             np.save(os.path.join(feature_path, "names.npy"), cand_file_name_list)
@@ -113,7 +114,10 @@ def main(opt):
                             num_workers=opt.num_workers)
     
     # get fixed model
-    Feature_extractor = FeatureExtractorOrigin().to(device)
+    if opt.model == 'origin':
+        Feature_extractor = FeatureExtractorOrigin().to(device)
+    elif opt.model == 'face':
+        Feature_extractor = FeatureExtractorFace.to(device)
 
     # extract features
     extractor_features(test_cast, test_cand, test_cast_data, test_data, Feature_extractor, opt, device)
@@ -121,6 +125,9 @@ def main(opt):
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Preprocess')
+    # model setting
+    parser.add_argument('--model', default='origin', type=str, help='model name (origin / face)')
+
     # Dataset setting
     parser.add_argument('--batchsize', default=128, type=int, help='batchsize in testing (one movie folder each time) ')
     # I/O Setting (important !!!)
