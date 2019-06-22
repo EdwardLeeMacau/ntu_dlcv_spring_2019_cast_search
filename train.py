@@ -46,8 +46,8 @@ y = {
 newline = '' if sys.platform.startswith('win') else '\n'
 
 def train(castloader: DataLoader, candloader: DataLoader, cand_data, 
-          feature_extractor: nn.Module, classifier: nn.Module, scheduler, optimizer, 
-          epoch, device, opt, feature_dim=1024) -> (nn.Module, nn.Module, float):   
+          feature_extractor: nn.Module, classifier: nn.Module, criterion,
+          scheduler, optimizer, epoch, device, opt, feature_dim=1024) -> (nn.Module, nn.Module, float):   
     """
       Return:
       - feature_extractor
@@ -86,7 +86,7 @@ def train(castloader: DataLoader, candloader: DataLoader, cand_data,
             else:
                 out = classifier(inputs)
 
-            loss = triplet_loss(out, label, num_cast)   # Size averaged loss
+            loss = triplet_loss(out, label, num_cast, criterion=criterion)   # Size averaged loss
             loss.backward()
             optimizer.step()
             
@@ -314,17 +314,18 @@ def main(opt):
     )
       
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
-    criterion = nn.MSELoss(reduction='sum') # For validation only.
+    train_criterion = nn.TripletMarginLoss(margin=0.25)
+    val_criterion = nn.MSELoss(reduction='sum') # For validation only.
 
     # ----------------------------------------- #
     # Testing pre-trained model mAP performance #
     # ----------------------------------------- #
-    val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data,
-                            feature_extractor, classifier, criterion,
-                            0, opt, device, feature_dim=opt.feature_dim)
-    record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(0, opt.epochs, val_mAP, val_loss)
-    print(record)
-    write_record(record, 'val_mAP.txt', opt.log_path)
+    # val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data,
+    #                         feature_extractor, classifier, val_criterion,
+    #                         0, opt, device, feature_dim=opt.feature_dim)
+    # record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(0, opt.epochs, val_mAP, val_loss)
+    # print(record)
+    # write_record(record, 'val_mAP.txt', opt.log_path)
 
     # ----------------------------------------- #
     # Training                                  #
@@ -332,13 +333,16 @@ def main(opt):
     best_mAP = 0.0
     for epoch in range(1, opt.epochs + 1):
         # Dynamic adjust the loss margin
-        pass
+        if epoch in opt.milestones:
+            i = opt.milestones.index(epoch)
+            train_criterion = nn.TripletMarginLoss(margin=opt.margin[i])
+            print('index: ', i, 'margin: ', opt.margin[i])
 
         # Train the models
         # If train classifier only, the variable 'feature_extractor' is set as None
         feature_extractor, classifier, training_loss = train(train_cast, train_cand, train_data,
-                                                            feature_extractor, classifier, scheduler, optimizer,
-                                                            epoch, device, opt, feature_dim=opt.feature_dim)
+                                                            feature_extractor, classifier, train_criterion,
+                                                            scheduler, optimizer, epoch, device, opt, feature_dim=opt.feature_dim)
             
         y['train_loss'].append(training_loss)
 
@@ -356,7 +360,7 @@ def main(opt):
         if epoch % opt.save_interval == 0:    
             # If train classifier only, the variable 'feature_extractor' is set as None
             val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data, 
-                                    feature_extractor, classifier, criterion,  
+                                    feature_extractor, classifier, val_criterion,  
                                     epoch, opt, device, feature_dim=opt.feature_dim)
 
             y['val_loss'].append(val_loss)
@@ -379,6 +383,7 @@ if __name__ == '__main__':
     parser.add_argument('--batchsize', default=64, type=int, help='batchsize in training')
     parser.add_argument('--lr', default=5e-5, type=float, help='learning rate')
     parser.add_argument('--milestones', default=[10, 20, 30], nargs='*', type=int)
+    parser.add_argument('--margin', default=[0.5, 1, 1.5], nargs='*', type=int)
     parser.add_argument('--gamma', default=0.1, type=float)
     parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--weight_decay', default=5e-4, type=float)

@@ -3,7 +3,7 @@ import torch.nn as nn
 
 criterion = nn.TripletMarginLoss(margin=0.25)
 
-def triplet_loss(inputs, labels: list, cast_num: int):
+def triplet_loss(inputs, labels: list, cast_num: int, criterion=criterion):
     """
       Self define triplet loss function.
 
