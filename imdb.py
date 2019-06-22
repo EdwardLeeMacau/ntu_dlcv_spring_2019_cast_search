@@ -1,42 +1,48 @@
 """
-  FileName     [ imdb.py ]
-  PackageName  [ final ]
-  Synopsis     [ Dataloader of IMDb dataset ]
+    FileName     [ imdb.py ]
+    PackageName  [ final ]
+    Synopsis     [ Dataloader of IMDb dataset ]
 
-  Structure:
-    IMDb/
-    |---val/
-    |   |---<movie_name>/
-    |   |   |---candidates/
-    |   |   |   |---<id>.jpg
-    |   |   |---cast/
-    |   |   |   |---<id>.jpg
-    |   |   |---cast.json
-    |   |   |---candidate.json
-    |---|---<movie_name>/
-    | ...
-    |
-    |---test/
-    |   |---<movie_name>/
-    |   |   |---candidates/
-    |   |   |   |---<id>.jpg
-    |   |   |---cast/
-    |   |   |   |---<id>.jpg
-    |---|---<movie_name>/
-    ...
+    Structure:
+        IMDb/
+        |---val/
+        |   |---<movie_name>/
+        |   |   |---candidates/
+        |   |   |   |---<id>.jpg
+        |   |   |---cast/
+        |   |   |   |---<id>.jpg
+        |   |   |---cast.json
+        |   |   |---candidate.json
+        |---|---<movie_name>/
+        | ...
+        |
+        |---test/
+        |   |---<movie_name>/
+        |   |   |---candidates/
+        |   |   |   |---<id>.jpg
+        |   |   |---cast/
+        |   |   |   |---<id>.jpg
+        |---|---<movie_name>/
+        ...
 
-    IMDb/
-    |---test/
-    |   |---<movie_name>/
-    |   |   |---candidates/
-    |   |   |   |---features.npy
-    |   |   |   |---names.npy
-    |   |   |   |---labels.npy
-    |   |   |---cast/
-    |   |   |   |---features.npy
-    |   |   |   |---names.npy
-    |   |   |   |---labels.npy
-    ...
+        IMDb/
+        |---test/
+        |   |---<movie_name>/
+        |   |   |---candidates/
+        |   |   |   |---features.npy
+        |   |   |   |---names.npy
+        |   |   |   |---labels.npy
+        |   |   |---cast/
+        |   |   |   |---features.npy
+        |   |   |   |---names.npy
+        |   |   |   |---labels.npy
+        ...
+
+    Warn : 
+        Dataset : when action = 'save' , will parse all json files recursicely,
+                    so only used when datapath given '<root>/train/' or '<root>/val/'
+                    '<root>/test' has to save_features through inference_csv.py
+
 """
 
 import csv
@@ -92,11 +98,11 @@ class CandDataset(Dataset):
                                     orient='index', typ='series').reset_index()
                 casts = pd.read_json(os.path.join(data_path, mov, 'cast.json'),
                                     orient='index', typ='series').reset_index()
-                self.num_casts = casts.shape[0]
+                num_casts = casts.shape[0]
             
                 if not drop_others:
                     # add label "others" to casts
-                    # casts.loc[self.num_casts] = ['no_exist_others.jpg', 'others']
+                    # casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
 
                     # dont actually add "others" to casts, but handle at __getietm__()
                     candidates = candidate_json
@@ -190,10 +196,11 @@ class CandDataset(Dataset):
             if self.transform:
                 image = self.transform(image)
 
+            num_casts = self.cast_df.shape[0]
             # string label >> int label
             label_mapped = self.cast_df.index[self.cast_df[0] == label_str].tolist()
-            # handle : if no "others" in self.cast_df, return self.num_casts as label (old labes : 0 ~ self.num_casts - 1)
-            label_mapped = label_mapped[0] if len(label_mapped) > 0 else self.num_casts
+            # handle : if no "others" in self.cast_df, return num_casts as label (old labes : 0 ~ self.num_casts - 1)
+            label_mapped = label_mapped[0] if len(label_mapped) > 0 else num_casts
             
             if self.action == 'save':
                 return image, label_mapped, img_name         
@@ -288,7 +295,6 @@ class CastDataset(Dataset):
 
     def __getitem__(self, index):
         moviename = self.movies[index]
-
         if self.action in ('test'):
             # Scanning the folder list
             '''
@@ -371,8 +377,7 @@ class CastDataset(Dataset):
                 pass
 
             images = torch.tensor([])
-            labels = torch.tensor([], dtype=torch.long)
-                            
+            label_list = []
             # img_names = []
             for idx in range(num_casts):
                 image_path, cast = casts_df.iat[idx, 0], casts_df.iat[idx, 1]
@@ -389,8 +394,9 @@ class CastDataset(Dataset):
                 label_mapped = label_mapped[0] if len(label_mapped) > 0 else num_casts
                 # label_mapped = torch.tensor(label_mapped)
                 
-                labels = torch.cat((labels, label_mapped), dim=0)
+                label_list.append(label_mapped)
                 # img_names.append(img_name)
+            labels = torch.tensor(label_list, dtype=torch.long)
                 
             return images, labels, moviename    #, img_names
 
@@ -400,7 +406,13 @@ def dataloader_unittest(debug=False):
 
     mode, drop = ('save', False)
 
-    for datapath_name in ['train', 'val', 'test']:
+    '''
+        Warn : 
+            Dataset : when action = 'save' , will parse all json files recursicely,
+                        so only used when datapath given '<root>/train/' or '<root>/val/'
+                        '<root>/test' has to save_features through inference_csv.py
+    '''
+    for datapath_name in ['train', 'val']:
 
         print("Testing save '{}'".format(datapath_name))
 
@@ -427,7 +439,7 @@ def dataloader_unittest(debug=False):
         )
 
         cand_loader = DataLoader(cand_dataset, batch_size=8, shuffle=False, num_workers=0)
-        cast_loader = DataLoader(cast_dataset, batch_size=8, shuffle=False, num_workers=0)
+        cast_loader = DataLoader(cast_dataset, batch_size=1, shuffle=False, num_workers=0)
 
         print("Length of cast dataset: {}".format(len(cast_dataset)))
         
@@ -435,6 +447,7 @@ def dataloader_unittest(debug=False):
         # print("Length of cand dataset: {}".format(len(cand_dataset)))
 
         for index, (images, labels, moviename, img_names) in enumerate(cast_loader, 1):
+            moviename = moviename[0]    # handle key error, moviename = ('tt1345836' ,) to 'tt1345836'
             cand_dataset.set_mov_name_save(moviename)
             for j, (image, label_mapped, img_name) in enumerate(cand_loader, 1):
                 print("cast images.shape: {}".format(images.shape))
@@ -443,14 +456,15 @@ def dataloader_unittest(debug=False):
                 print("cand label_mapped.shape: {}".format(label_mapped.shape))
                 print("moviename :", moviename)
                 print("img_name :", img_name)
-                # print("Label: {}".format(label))
+                print()
                 break
+            break
 
     ########################################################3
 
-    for mode, drop in [('train', True), ('val', False), ('save', False), ('test', False)]:
+    for mode, drop in [('train', True), ('val', False), ('test', False)]:
 
-        print("Training setting: {}".format(mode))
+        print("Dataset setting, action = {}".format(mode))
 
         cand_dataset = CandDataset(
             data_path = "./IMDb_resize/{}".format(mode),
@@ -475,7 +489,7 @@ def dataloader_unittest(debug=False):
         )
 
         cand_loader = DataLoader(cand_dataset, batch_size=8, shuffle=False, num_workers=0)
-        cast_loader = DataLoader(cast_dataset, batch_size=8, shuffle=False, num_workers=0)
+        cast_loader = DataLoader(cast_dataset, batch_size=1, shuffle=False, num_workers=0)
 
         print("Length of cast dataset: {}".format(len(cast_dataset)))
         
@@ -484,6 +498,7 @@ def dataloader_unittest(debug=False):
 
         if mode == 'train':
             for index, (images, labels, moviename) in enumerate(cast_loader, 1):
+                moviename = moviename[0]    # handle key error, moviename = ('tt1345836' ,) to 'tt1345836'
                 cand_dataset.set_mov_name_train(moviename)
                 for j, (image, label_mapped, index) in enumerate(cand_loader, 1):
                     print("cast images.shape: {}".format(images.shape))
@@ -492,10 +507,12 @@ def dataloader_unittest(debug=False):
                     print("cand label_mapped.shape: {}".format(label_mapped.shape))
                     print("moviename :", moviename)
                     print("index :", index)
-                    # print("Label: {}".format(label))
+                    print()
                     break
+                break
         elif mode == 'val':
             for index, (images, labels, moviename, img_names) in enumerate(cast_loader, 1):
+                moviename = moviename[0]    # handle key error, moviename = ('tt1345836' ,) to 'tt1345836'
                 cand_dataset.set_mov_name_val(moviename)
                 for j, (image, label_mapped, idx) in enumerate(cand_loader, 1):
                     print("cast images.shape: {}".format(images.shape))
@@ -504,10 +521,12 @@ def dataloader_unittest(debug=False):
                     print("cand label_mapped.shape: {}".format(label_mapped.shape))
                     print("moviename :", moviename)
                     print("idx :", idx)
-                    # print("Label: {}".format(label))
-                    break       
+                    print()
+                    break
+                break       
         elif mode == 'test':
             for index, (images, moviename, file_name_list) in enumerate(cast_loader, 1):
+                moviename = moviename[0]    # handle key error, moviename = ('tt1345836' ,) to 'tt1345836'
                 cand_dataset.set_mov_name_test(moviename)
                 for j, (image, img_name) in enumerate(cand_loader, 1):
                     print("cast images.shape: {}".format(images.shape))
@@ -515,7 +534,9 @@ def dataloader_unittest(debug=False):
                     print("moviename :", moviename)
                     print("cast file_name_list :", file_name_list)
                     print("cand img_name :", img_name)
+                    print()
                     break
+                break
 
         print("Finish unit testing of mode {}\n\n".format(mode))
 
