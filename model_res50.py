@@ -11,7 +11,6 @@
 import pickle
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 import torchvision
 
 class Identity(nn.Module):
@@ -21,16 +20,17 @@ class Identity(nn.Module):
     def forward(self, x):
         return x
 
-class Feature_extractor_face(nn.Module):
-    def __init__(self, model='pretrain/resnet50_ft_weight.pkl'):
-        super(Feature_extractor_face, self).__init__()
+class FeatureExtractorFace(nn.Module):
+    def __init__(self, fixed_params=True, model='pretrain/resnet50_ft_weight.pkl'):
+        super(FeatureExtractorFace, self).__init__()
         
         # load pytorch resnet50
         resnet = torchvision.models.resnet50(num_classes=8631, pretrained=False)
 
         # fix layers
-        for param in resnet.parameters():
-            param.requires_grad = False
+        if fixed_params:
+            for param in resnet.parameters():
+                param.requires_grad = False
         
         # load pretrained weights
         with open(model, 'rb') as f:
@@ -48,9 +48,9 @@ class Feature_extractor_face(nn.Module):
         feature = self.resnet_layer(input_data)
         return feature
 
-class Feature_extractor_origin(nn.Module):
+class FeatureExtractorOrigin(nn.Module):
     def __init__(self):
-        super(Feature_extractor_origin, self).__init__()
+        super(FeatureExtractorOrigin, self).__init__()
 
         # load pytorch pretrained resnet50
         resnet = torchvision.models.resnet50(pretrained = True)
@@ -78,7 +78,7 @@ class Classifier(nn.Module):
                             nn.BatchNorm1d(2048),
                             nn.ReLU(True),
                             # nn.Dropout(drop),
-                            nn.Linear(2048,fc_out),
+                            nn.Linear(2048, fc_out),
                             )
 
     def forward(self, input_data):        
@@ -88,7 +88,7 @@ class Classifier(nn.Module):
 def model_structure_unittest():
     """ Debug model structure """
     # img
-    imgs = Variable(torch.FloatTensor(8, 3, 224, 224))
+    imgs = torch.FloatTensor(8, 3, 224, 224)
 
     # model
     res = Feature_extractor_face()
