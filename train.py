@@ -10,12 +10,14 @@ Usage:
 import torch
 import argparse
 import os
+import sys
 import csv
 import numpy as np
 
 from torch.optim import lr_scheduler 
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
+import torch.nn as nn
 
 # from model import feature_extractor
 from model_res50 import feature_extractor 
@@ -30,7 +32,9 @@ y = {
     'val_mAP': []
 }
 
-def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch, device, opt):   
+newline = '' if sys.platform.startswith('win') else '\n'
+
+def train(castloader: DataLoader, candloader: DataLoader, cand_data, model: nn.Module, scheduler, optimizer, epoch, device, opt):   
     """
       Return:
       - model
@@ -40,9 +44,8 @@ def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch,
     model.train()
     
     movie_loss = 0.0
-    # print(len(castloader))
     
-    for i, (cast, label_cast, mov) in enumerate(castloader):
+    for i, (cast, label_cast, mov) in enumerate(castloader, 1):
         mov = mov[0]
         # print('cast size' , cast.size())
         # print(label_cast, type(label_cast))
@@ -71,23 +74,23 @@ def train(castloader, candloader, cand_data, model, scheduler, optimizer, epoch,
             loss.backward()
             optimizer.step()
             
-            running_loss += loss.item()*bs
+            running_loss += loss.item() * bs
             
             if j % opt.log_interval == 0:
                 print('Epoch [%d/%d] Movie [%d/%d] Iter [%d] Loss: %.4f'
                       % (epoch, opt.epochs, i, len(castloader),
-                         j, running_loss / (j * (bs+1))))
+                         j, running_loss / (j * (bs + 1))))
             
-            if j == 30:
-                print("j == 30, break")              
-                break
+            # if j == 30:
+            #     print("j == 30, break")              
+            #     break
         
         movie_loss += running_loss
 
     return model, movie_loss / len(castloader)
                 
             
-def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device):    
+def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data, model: nn.Module, epoch, opt, device) -> float:    
     """
       Return: mAP
     """
@@ -95,7 +98,7 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
     results = []
 
     with torch.no_grad():
-        for i, (cast, _, mov) in enumerate(castloader):
+        for i, (cast, _, mov) in enumerate(castloader, 1):
             mov = mov[0]
             cast = cast.to(device)
             # cast_size = 1, num_cast+1, 3, 448, 448
@@ -108,10 +111,8 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
             cand_data.set_mov_name_train(mov)
             # cand_data.mv = mov
 
-            # TODO: wrong shape of candidates features / names
-
-            print("[Validating] Number of candidates should be equal to: {}".format(
-                len(os.listdir(os.path.join(opt.dataroot, 'val', mov, 'candidates')))))
+            # print("[Validating] Number of candidates should be equal to: {}".format(
+            #     len(os.listdir(os.path.join(opt.dataroot, 'val', mov, 'candidates')))))
 
             for j, (cand, _, index) in enumerate(candloader):
                 cand = cand.to(device)
@@ -131,15 +132,17 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
             cast_name = cast_name['index'].str[-23:-4].to_numpy()
             
             candidate_name = cand_data.all_candidates[mov]
+            candidate_name = candidate_name['index'].str[-18:-4].to_numpy()
             # candidate_name = cand_data.all_data[mov][0]
-            candidate_name = np.array([candidate_name.iat[int(index_out[x]), 0][-18:][:-4] 
-                                        for x in range(cand_out.shape[0])])
+            # candidate_name = np.array([candidate_name.iat[int(index_out[x]), 0][-18:][:-4] 
+            #                             for x in range(cand_out.shape[0])])
             result = evaluate_rerank.predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name)   
             results.extend(result)
     
-    with open('result.csv','w') as csvfile:
+    with open('result.csv', 'w', newline=newline) as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=['Id','Rank'])
         writer.writeheader()
+        
         for r in results:
             writer.writerow(r)
     
@@ -152,9 +155,9 @@ def val(castloader, candloader, cast_data, cand_data, model, epoch, opt, device)
 
     return mAP
 
-# --------------------------
-# -----  Save model  -------
-# --------------------------
+# ---------- #
+# Save model #
+# ---------- #
 def save_network(network, epoch, device, opt, num_fill=3):
     os.makedirs(opt.mpath, exist_ok=True)
     save_path = os.path.join(opt.mpath, 'net_{}.pth'.format(str(epoch).zfill(num_fill)))
@@ -178,15 +181,15 @@ def write_record(record, filename, folder):
 # ------------- #
 def main(opt):
     os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu)
-    device = torch.device("cuda:0")
+    device = torch.device("cuda")
     
     transform1 = transforms.Compose([
                         transforms.Resize((224,224), interpolation=3),
                         transforms.ToTensor(),
-                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                             std=[0.229, 0.224, 0.225])
-                                             ])
-    # Candidates datas    
+                        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                    ])
+
+    # Candidates Datas    
     train_data = CandDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
                                   mode='classify',
                                   drop_others=True,
@@ -196,7 +199,7 @@ def main(opt):
     train_cand = DataLoader(train_data,
                             batch_size=opt.batchsize,
                             shuffle=True,
-                            num_workers=0)
+                            num_workers=opt.threads)
     
     val_data = CandDataset(opt.dataroot, os.path.join(opt.dataroot, 'val'),
                                   mode='classify',
@@ -207,7 +210,7 @@ def main(opt):
     val_cand = DataLoader(val_data,
                             batch_size=opt.batchsize,
                             shuffle=False,
-                            num_workers=0)
+                            num_workers=opt.threads)
     
     # Cast Datas
     train_cast_data = CastDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
@@ -234,8 +237,7 @@ def main(opt):
                             shuffle=False,
                             num_workers=0)
     
-    model = feature_extractor()
-    model = model.to(device)
+    model = feature_extractor().to(device)
     
     optimizer = torch.optim.Adam(
                     model.parameters(), 
@@ -247,10 +249,10 @@ def main(opt):
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
     
     # testing pre-trained model mAP performance
-    # val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, 0, opt, device)
-    # record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%}\n'.format(0, opt.epochs, val_mAP)
-    # print(record)
-    # write_record(record, 'val_mAP.txt', opt.log_path)
+    val_mAP = val(val_cast, val_cand,val_cast_data, val_data, model, 0, opt, device)
+    record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%}\n'.format(0, opt.epochs, val_mAP)
+    print(record)
+    write_record(record, 'val_mAP.txt', opt.log_path)
 
     best_mAP = 0.0
     for epoch in range(1, opt.epochs + 1):
@@ -303,7 +305,7 @@ if __name__ == '__main__':
     # I/O Setting (important !!!)
     parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
     parser.add_argument('--log_path',  default='log', help='folder to output loss record')
-    parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
+    parser.add_argument('--dataroot', default='./IMDb_Resize/', type=str, help='Directory of dataroot')
     # parser.add_argument('--gt_file', default='/media/disk1/EdwardLee/dataset/IMDb/val_GT.json', type=str, help='Directory of training set.')
     # parser.add_argument('--outdir', default='PCB', type=str, help='output model name')
     # parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
@@ -312,11 +314,11 @@ if __name__ == '__main__':
     
     # Device Setting
     parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
-    # parser.add_argument('--threads', default=0, type=int)
+    parser.add_argument('--threads', default=0, type=int)
 
     # Others Setting
     parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
-    parser.add_argument('--log_interval', default=2, type=int)
+    parser.add_argument('--log_interval', default=10, type=int)
     parser.add_argument('--save_interval', default=3, type=int, help='Validation and save the network')
 
     opt = parser.parse_args()
