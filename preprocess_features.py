@@ -61,7 +61,7 @@ def extractor_features(castloader, candloader, cast_data, cand_data, Feature_ext
 
             # 2. Generate candidate features
             print("generating {}'s candidate features".format(mov))
-            cand_data.set_mov_name_test(mov)
+            cand_data.set_mov_name_save(mov)
             cand_out = torch.tensor([])
             cand_file_name_list = []
             for j, (cand, cand_file_name_tuple) in enumerate(candloader):
@@ -137,7 +137,7 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
     parser.add_argument('--num_workers', default=0, type=int, help='')
 
-    opt = parser.parse_args() 
+    opt = parser.parse_args()
 
     # Check files here
     if not os.path.exists(opt.dataroot):

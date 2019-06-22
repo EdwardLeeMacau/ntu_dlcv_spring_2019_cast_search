@@ -46,7 +46,7 @@ import utils
 
 # To pop the candidates
 class CandDataset(Dataset):
-    def __init__(self, root_path, data_path, mode='classify', drop_others=True, transform=None, debug=False, action='train'):
+    def __init__(self, root_path, data_path, mode='classify', drop_others=True, transform=None, debug=False, action='train', load_feature=False):
         # self.root_path = os.path.dirname(data_path)
         
         self.root_path = root_path  # IMDb
@@ -57,9 +57,16 @@ class CandDataset(Dataset):
         self.movies = os.listdir(self.data_path)
         self.mv = self.movies[0]    # initialize(avoid '' keyerror when dataloader initialize)
         self.action = action
+        self.load_feature = load_feature
 
-        if action == 'train':
-            # self.all_data = {}
+        if load_feature:
+            '''
+            TODO : 
+            load from .npy file
+            '''
+            pass
+
+        if action in ['train', 'save']:
             self.all_candidates = {}
             self.all_casts = {}
             
@@ -83,7 +90,7 @@ class CandDataset(Dataset):
                 self.all_candidates[mov] = candidates
                 self.all_casts[mov] = casts
         
-        elif action in ['test', 'save']:
+        elif action in 'test':
             pass
 
     def __len__(self):
@@ -97,13 +104,20 @@ class CandDataset(Dataset):
         self.mv = mov
         # self.leng = len(self.all_casts[self.mv])
 
+    def set_mov_name_save(self, mov):
+        self.mv = mov
+        self.candidate_df = self.all_candidates[mov]    # dataframe.columns = ['index', 0] (files, label)
+        self.cast_df = self.all_casts[mov]              # dataframe.columns = ['index', 0] (files, label)
+        self.leng = len(self.candidate_df)
+
     def set_mov_name_test(self, mov):
+        self.mv = mov
         self.movie_path = os.path.join(self.data_path, mov) # to get image path
         self.candidate_file_list = os.listdir(os.path.join(self.movie_path, 'candidates'))
         self.leng = len(self.candidate_file_list)
 
     def __getitem__(self, idx):
-        if self.action in ['test', 'save']:    
+        if self.action == 'test':
             '''
             Return (old, indexing by movie):
               - images (torch.tensor) : all candidates transformed images 
@@ -121,8 +135,27 @@ class CandDataset(Dataset):
             if self.transform:
                 image = self.transform(image)
 
-            img_name = candidate_file[:-4]    # remove ".jpg"            
-            return image, img_name 
+            img_name = candidate_file[:-4]    # remove ".jpg"
+            return image, img_name
+
+        elif self.action == 'save':
+            '''
+            Return (new, indexing by img):
+              - image (torch.tensor) : transformed image
+              - label_mapped (int)
+              - img_name (str) : img file name (list of str (no ".jpg")
+            '''
+            image_path, label_str = self.candidate_df.iat[idx, 0], self.candidate_df.iat[idx, 1]
+            img_name = image_path.split('/')[-1].split('.')[0]
+
+            image = Image.open(os.path.join(self.root_path, image_path))
+            if self.transform:
+                image = self.transform(image)
+
+            # string label >> int label
+            label_mapped = self.cast_df.index[self.cast_df[0] == label_str].tolist()[0] 
+            # print('label check : [{} >> {}]'.format(label_str, label_mapped))
+            return image, img_name, label_mapped
 
         elif self.action == 'train':
             '''
@@ -130,32 +163,17 @@ class CandDataset(Dataset):
               - image
               - label_mapped
               - index
-            '''
-            # casts = self.all_data[self.mv][1]
-            # candidates = self.all_data[self.mv][0]        
+            '''       
             casts = self.all_casts[self.mv]
             candidates = self.all_candidates[self.mv]
 
             # randomly generate an index to get candidate image
             index = int(torch.randint(0, len(candidates[0]), (1,)).tolist()[0])
 
-            # print(casts)
-            # ---------------------------- # 
-            # Classify:                    #
-            #   get 1 image and 1 label    #
-            # ---------------------------- #
             if self.mode == 'classify':
                 image_path, cast = candidates.iat[index, 0], candidates.iat[index, 1]
 
-            # ---------------------------- #
-            # To Read the images           #
-            # ---------------------------- #
             image = Image.open(os.path.join(self.root_path, image_path))
-
-            # ---------------------------------------------------
-            # Features Output dimension: (feature_dim)
-            # Images Output dimension:   (channel, height, width)
-            # ---------------------------------------------------
             if self.transform:
                 image = self.transform(image)
 
@@ -163,14 +181,11 @@ class CandDataset(Dataset):
             if self.mode == 'classify':
                 label_mapped = casts.index[casts[0] == cast].tolist()[0] 
                 # print('label check : [{} >> {}]'.format(cast, label_mapped))
-            
             return image, label_mapped, index
     
 # To pop the cast images
 class CastDataset(Dataset):
-    def __init__(self, root_path, data_path, mode='classify', drop_others=True, transform=None, debug=False, action='train'):
-        # self.root_path = os.path.dirname(data_path)
-
+    def __init__(self, root_path, data_path, mode='classify', drop_others=True, transform=None, debug=False, action='train', load_feature=False):
         self.root_path = root_path  # IMDb
         self.data_path = data_path  # IMDb/train 
         self.mode = mode
@@ -179,9 +194,31 @@ class CastDataset(Dataset):
         self.action = action
         self.transform = transform
         self.movies = os.listdir(self.data_path)    # moviename = 'tt6518634'
+        self.load_feature = load_feature
 
-        # TO Handle the difference between 'train' or 'test'
-
+        if self.action == 'save':
+            self.all_candidates = {}
+            self.all_casts = {}
+            
+            for mov in self.movies:
+                # Read json as pandas.DataFrame and divide candidates and others
+                candidate_json = pd.read_json(os.path.join(data_path, mov, 'candidate.json'),
+                                                orient='index', typ='series').reset_index()
+                casts = pd.read_json(os.path.join(data_path, mov, 'cast.json'),
+                                                orient='index', typ='series') .reset_index()
+                num_casts = casts.shape[0]
+            
+                if not drop_others:
+                    # add label "others" to casts
+                    casts.loc[num_casts] = ['no_exist_others.jpg', 'others']
+                    candidates = candidate_json
+                else:
+                    # remove label "others" in origin candidate_json
+                    candidates = candidate_json[candidate_json[0] != "others"]
+            
+                # self.all_data[mov] = [ candidates, casts ]
+                self.all_candidates[mov] = candidates
+                self.all_casts[mov] = casts
 
     def __len__(self):
         return len(self.movies)
@@ -231,19 +268,6 @@ class CastDataset(Dataset):
                 casts.loc[num_casts] = [others.iat[rn,0], 'others']
 
             self.casts = casts
-
-            # if not self.drop_others:
-                # casts.loc[num_casts] = [others.iat[rn,0], 'others']
-            # else:
-                # casts.loc[num_casts] = ['no_this_img.jpg', 'others']
-            
-            # -------------------------------------------------
-            # Mode:
-            #   Classify: 
-            #     get 1 image and 1 label
-            #   Features:
-            #     get 1 image only.
-            # -------------------------------------------------
             
             images = torch.tensor([])
             labels = torch.tensor([], dtype=torch.long)
@@ -258,9 +282,6 @@ class CastDataset(Dataset):
                 if self.mode == 'classify':
                     image_path, cast = casts.iat[idx, 0], casts.iat[idx, 1]
 
-                # ------------------ #
-                # To Read the images #
-                # ------------------ #
                 image = Image.open(os.path.join(self.root_path, image_path))
         
                 # --------------------------------------------------- #
@@ -278,10 +299,6 @@ class CastDataset(Dataset):
                     label_mapped = torch.tensor(label_mapped)
                     labels = torch.cat((labels, label_mapped), dim=0)
                     
-            # print(num_casts)
-            # print(images.size())
-            # print(labels)
-            # print(moviename)
             return images, labels, moviename
 
 def dataloader_unittest(debug=False):
