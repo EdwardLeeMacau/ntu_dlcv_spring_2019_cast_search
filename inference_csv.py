@@ -23,10 +23,9 @@ import evaluate_rerank
 import final_eval
 import utils
 from imdb import CastDataset, CandDataset
-# from model import feature_extractor
-from model_res50 import feature_extractor
+from model_res50 import FeatureExtractorFace, FeatureExtractorOrigin, Classifier
 
-def test(castloader, candloader, cast_data, cand_data, model, opt, device):
+def test(castloader, candloader, cast_data, cand_data, Feature_extractor, Feature_extractor_fc, opt, device):
     '''
       Inference by trained model, generated inferenced result if needed.
 
@@ -39,7 +38,10 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
       Return: None
     '''
     print('Start Inferencing {}ing dataset ... '.format(opt.action))    
-    model.eval()
+    # model.eval()
+    Feature_extractor.eval()
+    Feature_extractor_fc.eval()
+
     results = []
     action = opt.action
     save_feature = opt.save_feature
@@ -56,8 +58,9 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
                 mov = mov[0]
                 cast = cast.to(device)
                 # cast_size = 1, num_cast+1, 3, 448, 448
-                cast_out = model(cast.squeeze(0))
-                cast_out = cast_out.detach().cpu().view(-1, 2048)
+                cast_out = Feature_extractor(cast.squeeze(0))
+                cast_out = Feature_extractor_fc(cast_out)
+                cast_out = cast_out.detach().cpu().view(-1, 1024)
                 
                 cand_out = torch.tensor([])
                 index_out = torch.tensor([], dtype=torch.long)
@@ -66,8 +69,9 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
                 for j, (cand, _, index) in enumerate(candloader):
                     cand = cand.to(device)
                     # cand_size = bs - 1 - num_cast, 3, w, c
-                    out = model(cand)
-                    out = out.detach().cpu().view(-1, 2048)
+                    out = Feature_extractor(cand)
+                    out = Feature_extractor_fc(out)
+                    out = out.detach().cpu().view(-1, 1024)
                     cand_out = torch.cat((cand_out,out), dim=0)
                     index_out = torch.cat((index_out, index), dim=0)       
 
@@ -113,8 +117,9 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
                 if not load_feature:
                     print("generating {}'s cast features".format(mov))
                     cast = cast.to(device)          # cast.size[1, num_cast, 3, 224, 224]
-                    cast_out = model(cast.squeeze(0))
-                    cast_out = cast_out.detach().cpu().view(-1, 2048)
+                    cast_out = Feature_extractor(cast.squeeze(0))
+                    cast_out = Feature_extractor_fc(cast_out)
+                    cast_out = cast_out.detach().cpu().view(-1, 1024)
                     casts_features = cast_out.numpy()
 
                     # Save cast features 
@@ -135,8 +140,9 @@ def test(castloader, candloader, cast_data, cand_data, model, opt, device):
                         # print('count = {}'.format(count))
                         
                         cand = cand.to(device)
-                        out = model(cand)
-                        out = out.detach().cpu().view(-1, 2048)
+                        out = Feature_extractor(cand)
+                        out = Feature_extractor_fc(out)
+                        out = out.detach().cpu().view(-1, 1024)
                         cand_out = torch.cat((cand_out, out), dim=0)
 
                     candidates_features = cand_out.numpy()
@@ -227,10 +233,16 @@ def main(opt):
                             shuffle=False,
                             num_workers=opt.num_workers)
     
-    model = utils.load_network(feature_extractor(), opt.model).to(device)
+    # fixed model
+    Feature_extractor = FeatureExtractorOrigin().to(device)
+    # trained weights
+    Feature_extractor_fc = Classifier().to(device)
+
+    if opt.model != '':
+        Feature_extractor_fc = utils.load_network(Feature_extractor_fc(), opt.model).to(device)
 
     # testing trained model, output result.csv
-    test(test_cast, test_cand, test_cast_data, test_data, model, opt, device)
+    test(test_cast, test_cand, test_cast_data, test_data, Feature_extractor, Feature_extractor_fc, opt, device)
         
 if __name__ == '__main__':
     
@@ -239,7 +251,7 @@ if __name__ == '__main__':
     parser.add_argument('--batchsize', default=128, type=int, help='batchsize in testing (one movie folder each time) ')
     # parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
     # I/O Setting (important !!!)
-    parser.add_argument('--model', default='./model_face/net_best.pth', help='model checkpoint path to extract features')
+    parser.add_argument('--model', default='', help='model checkpoint path to extract features')    # ./model_face/net_best.pth
     parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
     parser.add_argument('--action', default='test', type=str, help='action type (test / val)')
     parser.add_argument('--out_csv',  default='./result.csv', help='output csv file name')
