@@ -83,14 +83,14 @@ class CandDataset(Dataset):
                 self.all_candidates[mov] = candidates
                 self.all_casts[mov] = casts
         
-        elif action == 'test':
+        elif action in ['test', 'save']:
             pass
 
     def __len__(self):
         if self.action == 'train':
             return len(self.all_candidates[self.mv])
         
-        elif self.action == 'test':
+        elif self.action in ['test', 'save']:
             return self.leng
 
     def set_mov_name_train(self, mov):
@@ -103,7 +103,7 @@ class CandDataset(Dataset):
         self.leng = len(self.candidate_file_list)
 
     def __getitem__(self, idx):
-        if self.action == 'test':    
+        if self.action in ['test', 'save']:    
             '''
             Return (old, indexing by movie):
               - images (torch.tensor) : all candidates transformed images 
@@ -189,7 +189,7 @@ class CastDataset(Dataset):
     def __getitem__(self, index):
         moviename = self.movies[index]
 
-        if self.action == 'test':
+        if self.action in ['test', 'save']:
             # Scanning the folder list
             '''
               Return:
@@ -290,7 +290,7 @@ def dataloader_unittest(debug=False):
     # (self, data_path, moviename, mode='classify', drop_others=True, transform=None, debug=False):
     dataset = CandDataset(
         data_path = "./IMDb/train",
-        moviename = "tt6518634",
+        # moviename = "tt6518634",
         mode = 'classify',
         debug = True,
         transform = transforms.Compose([
