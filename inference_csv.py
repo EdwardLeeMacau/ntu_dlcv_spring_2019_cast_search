@@ -206,10 +206,7 @@ def main(opt):
     os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu)
     device = torch.device("cuda")
 
-    if opt.action == 'test':
-        folder_name = 'test_resize'
-    elif opt.action == 'val':
-        folder_name = 'val'
+    folder_name = opt.action
 
     # ------------------------- # 
     # Dataset initialize        # 

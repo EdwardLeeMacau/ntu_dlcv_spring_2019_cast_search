@@ -119,7 +119,7 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
     results_rerank = []
 
     with torch.no_grad():
-        for i, (cast, label_cast, mov) in enumerate(castloader, 1):
+        for i, (cast, label_cast, mov, img_names) in enumerate(castloader, 1):
             mov = mov[0]                        # Un-packing list
             
             cast = cast.to(device)              # cast.shape: 1, num_cast+1, 3, 448, 448
@@ -133,7 +133,7 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             cand_labels = torch.tensor([], dtype=torch.long)
             index_out   = torch.tensor([], dtype=torch.long)
 
-            cand_data.set_mov_name_train(mov)
+            cand_data.set_mov_name_val(mov)
 
             print("[Validating] Number of candidates should be equal to: {}".format(
                 len(os.listdir(os.path.join(opt.dataroot, 'val', mov, 'candidates')))))
@@ -168,12 +168,15 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             else:
                 print('[Validating] {}/{} {} processed, get {} features.'.format(i, len(castloader), mov, cand_out.size()[0]))
 
+            # Getting the labels name
+            cast_name = img_names.to_numpy()
+
             # Getting the labels name from dataframe
-            cast_name = cast_data.casts_df
-            cast_name = cast_name['index'].str[-23:-4].to_numpy()
+            # cast_name = cast_data.casts_df
+            # cast_name = cast_name['index'].str[-23:-4].to_numpy()
             
-            candidate_name = cand_data.all_candidates[mov]
-            candidate_name = candidate_name['index'].str[-18:-4].to_numpy()
+            candidate_df = cand_data.all_candidates[mov]
+            candidate_name = candidate_df['index'].str[-18:-4].to_numpy()
             
             result = evaluate.cosine_similarity(cast_feature, cast_name, candidate_feature, candidate_name)
             results_cosine.extend(result)

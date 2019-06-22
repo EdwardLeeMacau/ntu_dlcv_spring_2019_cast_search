@@ -61,7 +61,7 @@ def extractor_features(castloader, candloader, cast_data, cand_data, Feature_ext
 
             # 2. Generate candidate features
             print("generating {}'s candidate features".format(mov))
-            cand_data.set_mov_name_save(mov)
+            cand_data.set_mov_name_val(mov)
             cand_out = torch.tensor([])
             cand_file_name_list = []
             for j, (cand, cand_file_name_tuple) in enumerate(candloader):
@@ -132,7 +132,7 @@ if __name__ == '__main__':
     parser.add_argument('--batchsize', default=128, type=int, help='batchsize in testing (one movie folder each time) ')
     # I/O Setting (important !!!)
     parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
-    parser.add_argument('--folder_name', default='train', type=str, help='folder name (test_resize / val / train)')
+    parser.add_argument('--folder_name', default='train', type=str, help='folder name (test / val / train)')
     # Device Setting
     parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
     parser.add_argument('--num_workers', default=0, type=int, help='')
