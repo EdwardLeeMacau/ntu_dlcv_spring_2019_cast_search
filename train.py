@@ -1,34 +1,45 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Jun 17 07:55:44 2019
-
 @author: Chun
 
-Usage:
-    python train.py --dataroot <IMDb_folder_path> --mpath <model_output_path>
+  FileName     [ train.py ]
+  PackageName  [ final ]
+  Synopsis     [ Dataloader of IMDb dataset ]
+
+  Usage:
+  - python train.py --dataroot <trainset> --mpath <model_output>
+  >> Train the model front-to-end 
+
+  - python train.py --features --dataroot <trainset> --mpath <model_output>
+  >> Train the classifier (fixed the resnet-50)
+
+  - Other pramameters:
+  >> Hyperparameter tuning
 """
-import torch
 import argparse
+import csv
 import os
 import sys
-import csv
+
 import numpy as np
 
-from torch.optim import lr_scheduler 
-from torch.utils.data import DataLoader
-import torchvision.transforms as transforms
+import torch
 import torch.nn as nn
+import torchvision.transforms as transforms
+from torch.optim import lr_scheduler
+from torch.utils.data import DataLoader
 
-from model_res50 import FeatureExtractorFace, Classifier 
-from imdb import CandDataset, CastDataset
-from tri_loss import triplet_loss
 import evaluate
 import evaluate_rerank
 import final_eval
 import utils
+from imdb import CandDataset, CastDataset
+from model_res50 import Classifier, FeatureExtractorFace
+from tri_loss import triplet_loss
 
 y = {
     'train_loss': [],
+    'val_loss': [],
     'val_mAP': []
 }
 
@@ -44,30 +55,37 @@ def train(castloader: DataLoader, candloader: DataLoader, cand_data,
       - train_loss: average with movies
     """
     scheduler.step()
-    feature_extractor.train()
+
     classifier.train()
+    if feature_extractor is not None:
+        feature_extractor.train()
     
     movie_loss = 0.0
     
-    for i, (cast, label_cast, mov) in enumerate(castloader, 1):
-        mov = mov[0]
-        num_cast = len(label_cast[0])
+    for i, (cast, label_cast, moviename, _) in enumerate(castloader, 1):
+        moviename    = moviename[0]
+        label_cast   = label_cast[0]
+        num_cast     = len(label_cast)
         running_loss = 0.0
 
-        cand_data.set_mov_name_train(mov)
+        cand_data.set_mov_name_train(moviename)
 
         for j, (cand, label_cand, _) in enumerate(candloader, 1):    
             bs = cand.size()[0]                         # cand.shape: batchsize, 3, 224, 224
             optimizer.zero_grad()
             
             inputs = torch.cat((cast.squeeze(0), cand), dim=0)
-            label  = torch.cat((label_cast[0], label_cand), dim=0).tolist()
+            label  = torch.cat((label_cast, label_cand), dim=0).tolist()
             inputs = inputs.to(device)
             
             # print('input size :', inputs.size())      # input.shape: batchsize, 3, 224, 224
             
-            out = feature_extractor(inputs)
-            out = classifier(out)
+            if feature_extractor is not None:
+                out = feature_extractor(inputs)
+                out = classifier(out)
+            else:
+                out = classifier(inputs)
+
             loss = triplet_loss(out, label, num_cast)   # Size averaged loss
             loss.backward()
             optimizer.step()
@@ -83,7 +101,6 @@ def train(castloader: DataLoader, candloader: DataLoader, cand_data,
 
     return feature_extractor, classifier, movie_loss / len(castloader)
                 
-            
 def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data, 
         feature_extractor: nn.Module, classifier: nn.Module, criterion,
         epoch, opt, device, feature_dim=1024) -> (float, float):    
@@ -92,11 +109,14 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
       - mAP:
       - loss:
     """
-    feature_extractor.eval()
     classifier.eval()
+    if feature_extractor is not None:
+        feature_extractor.eval()
     
     movie_loss = 0.0
-    results = []
+
+    results_cosine = []
+    results_rerank = []
 
     with torch.no_grad():
         for i, (cast, label_cast, mov) in enumerate(castloader, 1):
@@ -115,16 +135,21 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
 
             cand_data.set_mov_name_train(mov)
 
-            # print("[Validating] Number of candidates should be equal to: {}".format(
-            #     len(os.listdir(os.path.join(opt.dataroot, 'val', mov, 'candidates')))))
+            print("[Validating] Number of candidates should be equal to: {}".format(
+                len(os.listdir(os.path.join(opt.dataroot, 'val', mov, 'candidates')))))
 
             for j, (cand, label_cand, index) in enumerate(candloader):
-                cand = cand.to(device)          # cand.shape: bs, 3, 448, 448
-                out = feature_extractor(cand)
-                out = classifier(out)
+                cand = cand.to(device)          # cand.shape: bs, 3, height, wigth
+
+                if feature_extractor is not None:
+                    out = feature_extractor(cand)
+                    out = classifier(out)
+                else:
+                    out = classifier(cand)
+
                 out = out.detach().cpu().view(-1, feature_dim)
+
                 cand_out    = torch.cat((cand_out, out), dim=0)
-                
                 cand_labels = torch.cat((cand_labels, label_cand), dim=0)
                 index_out   = torch.cat((index_out, index), dim=0)      
 
@@ -138,45 +163,58 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             if criterion is not None:
                 cand_labels, indices = cand_labels.sort(dim=0)      # Sort the features by the labels
                 loss = criterion(candidate_feature[indices], cast_feature[cand_labels]).item()
+                movie_loss += loss
+                print('[Validating] {}/{} {} processed, get {} features, loss {:.4f}'.format(i, len(castloader), mov, cand_out.size()[0], loss))
+            else:
+                print('[Validating] {}/{} {} processed, get {} features.'.format(i, len(castloader), mov, cand_out.size()[0]))
 
             # Getting the labels name from dataframe
-            cast_name = cast_data.casts
+            cast_name = cast_data.casts_df
             cast_name = cast_name['index'].str[-23:-4].to_numpy()
             
             candidate_name = cand_data.all_candidates[mov]
             candidate_name = candidate_name['index'].str[-18:-4].to_numpy()
             
             result = evaluate.cosine_similarity(cast_feature, cast_name, candidate_feature, candidate_name)
-            # result = evaluate_rerank.predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name)   
-            results.extend(result)
-            
-            if criterion is not None:
-                print('[Validating] {}/{} {} processed, get {} features, loss {:.4f}'.format(i, len(castloader), mov, cand_out.size()[0], loss))
-            else:
-                print('[Validating] {}/{} {} processed, get {} features.'.format(i, len(castloader), mov, cand_out.size()[0]))
+            results_cosine.extend(result)
 
-    with open('result.csv', 'w', newline=newline) as csvfile:
+            # result = evaluate_rerank.predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name)
+            results_rerank.extend(result)
+
+    # Generate the csv with submission format
+    with open('result_cosine.csv', 'w', newline=newline) as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=['Id','Rank'])
         writer.writeheader()
-        
-        for r in results:
+        for r in results_cosine:
             writer.writerow(r)
     
-    mAP, AP_dict = final_eval.eval('result.csv', os.path.join(opt.dataroot , "val_GT.json"))
+    with open('result_rerank.csv', 'w', newline=newline) as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=['Id','Rank'])
+        writer.writeheader()
+        for r in results_cosine:
+            writer.writerow(r)
     
-    for key, val in AP_dict.items():
-        record = '[Epoch {}] AP({}): {:.2%}'.format(epoch, key, val)
-        print(record)
-        write_record(record, 'val_seperate_AP.txt', opt.log_path)
+    # Calculate mAP
+    mAP, AP_dict = final_eval.eval('result_cosine.csv', os.path.join(opt.dataroot , "val_GT.json"))
+    print('[Cosine] mAP: {:.2%}'.format(mAP))
+    
+    mAP, AP_dict = final_eval.eval('result_rerank.csv', os.path.join(opt.dataroot , "val_GT.json"))
+    print('[Rerank] mAP: {:.2%}'.format(mAP))
+    
+    # for key, val in AP_dict.items():
+    #     record = '[Epoch {}] AP({}): {:.2%}'.format(epoch, key, val)
+    #     print(record)
+    #     write_record(record, 'val_seperate_AP.txt', opt.log_path)
 
-    return mAP, loss / len(candloader)
+    return mAP, movie_loss / len(candloader)
 
-# ---------- #
-# Save model #
-# ---------- #
-def save_network(network, epoch, device, opt, num_fill=3):
-    # os.makedirs(opt.mpath, exist_ok=True)
-    save_path = os.path.join(opt.mpath, 'net_{}.pth'.format(str(epoch).zfill(num_fill)))
+def save_network(network: nn.Module, name: str, device, opt):
+    """
+      Save the models with '<opt.mpath>/<name>'
+
+      Return: None
+    """
+    save_path = os.path.join(opt.mpath, name)
     torch.save(network.cpu().state_dict(), save_path)
 
     if torch.cuda.is_available():
@@ -184,9 +222,14 @@ def save_network(network, epoch, device, opt, num_fill=3):
 
     return
 
-def write_record(record, filename, folder):
+def draw_graph(epoch, y, opt):
+    """
+      Draw the training graph
+    """
+    raise NotImplementedError
+
+def write_record(record, filename: str, folder: str):
     path = os.path.join(folder, filename)
-    
     with open(path, 'a') as textfile:
         textfile.write(str(record) + '\n')
 
@@ -199,77 +242,100 @@ def main(opt):
     os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu)
     device = torch.device("cuda")
     
-    transform1 = transforms.Compose([
-                        transforms.Resize((224,224), interpolation=3),
-                        transforms.ToTensor(),
-                        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                    ])
+    # ------------------------- # 
+    # Dataset initialize        # 
+    # ------------------------- #
 
-    # Candidates Datas    
-    train_data = CandDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
-                                  mode='classify',
-                                  drop_others=True,
-                                  transform=transform1,
-                                  debug=opt.debug)
+    if opt.features:
+        transform = transforms.ToTensor()
     
-    val_data   = CandDataset(opt.dataroot, os.path.join(opt.dataroot, 'val'),
-                                  mode='classify',
-                                  drop_others=False,
-                                  transform=transform1,
-                                  debug=opt.debug)
+    if not opt.features:
+        transform = transforms.Compose([
+            transforms.Resize((224,224), interpolation=3),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+    
+    # Candidates Datas    
+    train_data = CandDataset(
+        data_path=os.path.join(opt.dataroot, 'train'),
+        drop_others=True,
+        transform=transform,
+        action='train'
+    )
+    
+    val_data = CandDataset(
+        data_path=os.path.join(opt.dataroot, 'val'),
+        drop_others=False,
+        transform=transform,
+        action='val'
+    )
 
     train_cand = DataLoader(train_data, batch_size=opt.batchsize, shuffle=True, num_workers=opt.threads)
     val_cand   = DataLoader(val_data, batch_size=opt.batchsize, shuffle=False, num_workers=opt.threads)
-    
+
     # Cast Datas
-    train_cast_data = CastDataset(opt.dataroot, os.path.join(opt.dataroot, 'train'),
-                                  mode='classify',
-                                  drop_others=True,
-                                  transform=transform1,
-                                  debug=opt.debug,
-                                  action='train')
+    train_cast_data = CastDataset(
+        data_path=os.path.join(opt.dataroot, 'train'),
+        drop_others=True,
+        transform=transform,
+        action='train'
+    )
+
+    val_cast_data = CastDataset(
+        data_path=os.path.join(opt.dataroot, 'val'),
+        drop_others=False,
+        transform=transform,
+        action='val'
+    )
+
+    train_cast = DataLoader(train_cast_data, batch_size=1, shuffle=False, num_workers=opt.threads)
+    val_cast   = DataLoader(val_cast_data, batch_size=1, shuffle=False, num_workers=opt.threads)
     
-    val_cast_data = CastDataset(opt.dataroot, os.path.join(opt.dataroot, 'val'),
-                                  mode='classify',
-                                  drop_others=False,
-                                  transform=transform1,
-                                  debug=opt.debug,
-                                  action='train')
-    
-    train_cast = DataLoader(train_cast_data, batch_size=1, shuffle=False, num_workers=0)
-    val_cast   = DataLoader(val_cast_data, batch_size=1, shuffle=False, num_workers=0)
-    
-    # Models
-    feature_extractor = FeatureExtractorFace().to(device)
+    # ------------------------- # 
+    # Model, optim initialize   # 
+    # ------------------------- #
     classifier = Classifier(2048).to(device)
+    feature_extractor = None
+    params = [{'params': classifier.parameters()}]
+    if not opt.features:
+        feature_extractor = FeatureExtractorFace().to(device)
+        params.append({'params': classifier.parameters(), 'lr': 1e-3})
     
-    optimizer = torch.optim.Adam(
-                    classifier.parameters(), 
-                    lr=opt.lr,
-                    weight_decay=opt.weight_decay,
-                    betas=(opt.b1, opt.b2)
-                )
+    optimizer = torch.optim.Adam(params,
+        lr=opt.lr,
+        weight_decay=opt.weight_decay,
+        betas=(opt.b1, opt.b2)
+    )
       
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
-    criterion = nn.MSELoss(reduction='sum')
+    criterion = nn.MSELoss(reduction='sum') # For validation only.
 
-    # Testing pre-trained model mAP performance
-    val_mAP, val_loss = val(val_cast, val_cand,val_cast_data, val_data,
+    # ----------------------------------------- #
+    # Testing pre-trained model mAP performance #
+    # ----------------------------------------- #
+    val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data,
                             feature_extractor, classifier, criterion,
                             0, opt, device, feature_dim=opt.feature_dim)
     record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(0, opt.epochs, val_mAP, val_loss)
     print(record)
     write_record(record, 'val_mAP.txt', opt.log_path)
 
+    # ----------------------------------------- #
+    # Training                                  #
+    # ----------------------------------------- #
     best_mAP = 0.0
     for epoch in range(1, opt.epochs + 1):
         # Dynamic adjust the loss margin
         pass
 
         # Train the models
+        # If train classifier only, the variable 'feature_extractor' is set as None
         feature_extractor, classifier, training_loss = train(train_cast, train_cand, train_data,
                                                             feature_extractor, classifier, scheduler, optimizer,
                                                             epoch, device, opt, feature_dim=opt.feature_dim)
+            
+        y['train_loss'].append(training_loss)
 
         # Print and log the training loss
         record = 'Epoch [%d/%d] TrainingLoss: %.4f' % (epoch, opt.epochs, training_loss)
@@ -278,38 +344,32 @@ def main(opt):
 
         # Save the network
         if epoch % opt.save_interval == 0:
-            save_network(classifier, epoch, device, opt)
+            name = 'net_{}.pth'.format(str(epoch).zfill(3))
+            save_network(classifier, name, device, opt)
         
         # Validate the model performatnce
-        if epoch % opt.save_interval == 0:
+        if epoch % opt.save_interval == 0:    
+            # If train classifier only, the variable 'feature_extractor' is set as None
             val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data, 
                                     feature_extractor, classifier, criterion,  
                                     epoch, opt, device, feature_dim=opt.feature_dim)
-            
+
+            y['val_loss'].append(val_loss)
+            y['val_mAP'].append(val_mAP)
+
             # Print and log the validation loss
-            record = 'Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(epoch, opt.epochs, val_mAP, val_loss)
+            record = 'Epoch [{}/{}] Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(epoch, opt.epochs, val_mAP, val_loss)
             print(record)
             write_record(record, 'val_mAP.txt', opt.log_path)
     
             # Save the best model
             if val_mAP > best_mAP:
-                save_path = os.path.join(opt.mpath, 'net_best.pth')
-                torch.save(classifier.cpu().state_dict(), save_path)
-    
-                if torch.cuda.is_available():
-                    classifier.to(device)
-                
+                save_network(classifier, 'net_best.pth', device, opt)
                 val_mAP = best_mAP
         
-if __name__ == '__main__':
-    
+if __name__ == '__main__':    
     parser = argparse.ArgumentParser(description='Training')
-    # Model Setting
-    # parser.add_argument('--drop_others', action='store_true', help='if true, the image of type others will be keeped.')
-    # parser.add_argument('--fp16', action='store_true', help='use float16 instead of float32, which will save about 50% memory' )
-    # parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
-    # parser.add_argument('--img_size', default=[448, 448], type=int, nargs='*')
-
+    
     # Training setting
     parser.add_argument('--batchsize', default=64, type=int, help='batchsize in training')
     parser.add_argument('--lr', default=5e-5, type=float, help='learning rate')
@@ -324,21 +384,20 @@ if __name__ == '__main__':
     
     # I/O Setting (important !!!)
     parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
-    parser.add_argument('--log_path',  default='log', help='folder to output loss record')
+    parser.add_argument('--log_path', default='log', help='folder to output logs')
     parser.add_argument('--dataroot', default='./IMDb_Resize/', type=str, help='Directory of dataroot')
+    parser.add_argument('--features', action='store_true', help='If true, dataloader will load the image in features')
     # parser.add_argument('--gt_file', default='./IMDb_Resize/val_GT.json', type=str, help='Directory of training set.')
     # parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
-    # parser.add_argument('--trainset', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/train', type=str, help='Directory of training set.')
-    # parser.add_argument('--valset', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/val', type=str, help='Directory of validation set')
     
     # Device Setting
     parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
     parser.add_argument('--threads', default=0, type=int)
 
     # Others Setting
-    parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
+    # parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
     parser.add_argument('--log_interval', default=10, type=int)
-    parser.add_argument('--save_interval', default=3, type=int, help='Validation and save the network')
+    parser.add_argument('--save_interval', default=1, type=int, help='Validation and save the network')
 
     opt = parser.parse_args()
 
