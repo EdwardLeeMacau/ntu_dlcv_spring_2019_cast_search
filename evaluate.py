@@ -42,7 +42,10 @@ def cosine_similarity(cast_feature: torch.Tensor, cast_name: np.ndarray, candida
     index    = torch.argsort(distance, dim=1, descending=True).cpu().numpy()
 
     print("Distance.shape: ", distance.shape)
-    # print(distance[0][index[0]])
+    print("Min distance: ")
+    print(list(map(lambda x: round(x, 4), distance.min(dim=1)[0].cpu().numpy().tolist())))     # Print values only, indices are deprecated
+    print("Max distance: ")
+    print(list(map(lambda x: round(x, 4), distance.max(dim=1)[0].cpu().numpy().tolist())))     # Print values only, indices are deprecated
 
     for i in range(index.shape[0]):
         result.append({
