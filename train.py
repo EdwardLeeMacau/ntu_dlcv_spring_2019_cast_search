@@ -306,6 +306,7 @@ def main(opt):
         # params.append({'params': feature_extractor.parameters(), 'lr': 1e-3})
         feature_extractor = FeatureExtractorFace().to(device)
         params.append({'params': feature_extractor.parameters()})
+        print("Train the model with Feature Extractor + Classifier")
     
     optimizer = torch.optim.Adam(params,
         lr=opt.lr,
@@ -320,12 +321,12 @@ def main(opt):
     # ----------------------------------------- #
     # Testing pre-trained model mAP performance #
     # ----------------------------------------- #
-    # val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data,
-    #                         feature_extractor, classifier, val_criterion,
-    #                         0, opt, device, feature_dim=opt.feature_dim)
-    # record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(0, opt.epochs, val_mAP, val_loss)
-    # print(record)
-    # write_record(record, 'val_mAP.txt', opt.log_path)
+    val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data,
+                            feature_extractor, classifier, val_criterion,
+                            0, opt, device, feature_dim=opt.feature_dim)
+    record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(0, opt.epochs, val_mAP, val_loss)
+    print(record)
+    write_record(record, 'val_mAP.txt', opt.log_path)
 
     # ----------------------------------------- #
     # Training                                  #
@@ -353,8 +354,12 @@ def main(opt):
 
         # Save the network
         if epoch % opt.save_interval == 0:
-            name = 'net_{}.pth'.format(str(epoch).zfill(3))
+            name = 'classifier_{}.pth'.format(str(epoch).zfill(3))
             save_network(classifier, name, device, opt)
+
+            if not opt.load_features:
+                name = 'resnet50_{}.pth'.format(str(epoch).zfill(3))
+                save_network(feature_extractor, name, device, opt)
         
         # Validate the model performatnce
         if epoch % opt.save_interval == 0:    
