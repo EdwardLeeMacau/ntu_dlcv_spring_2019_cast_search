@@ -83,7 +83,7 @@ def extractor_features(castloader, candloader, cast_data, cand_data, Feature_ext
 
             print('Saved features to {}'.format(feature_path))
             print('imgs_num({}) / file_names({})\n'.format(cand_out.size()[0], len(cand_file_name_list)))
-    print('Extracted all features of {}.\n'.format(folder_name))
+    print('Extracted all features of {} with model {}.\n'.format(folder_name, model_name))
 
 def main(opt):
     os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu)
@@ -98,11 +98,11 @@ def main(opt):
     
 
     # get fixed model
-    for model_name in ['origin', 'face']:
+    for model_name in ['face', 'origin']:
         if model_name == 'origin':
             Feature_extractor = FeatureExtractorOrigin().to(device)
         elif model_name == 'face':
-            Feature_extractor = FeatureExtractorFace.to(device)
+            Feature_extractor = FeatureExtractorFace().to(device)
 
         # initialize datasets
         for folder_name in ['train', 'val']:
