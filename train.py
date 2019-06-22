@@ -57,17 +57,17 @@ def train(castloader: DataLoader, candloader: DataLoader, cand_data,
         cand_data.set_mov_name_train(mov)
 
         for j, (cand, label_cand, _) in enumerate(candloader, 1):    
-            bs = cand.size()[0]                         # cand_size = bs, 3, 448, 448
+            bs = cand.size()[0]                         # cand.shape: batchsize, 3, 224, 224
             optimizer.zero_grad()
             
             inputs = torch.cat((cast.squeeze(0), cand), dim=0)
             label  = torch.cat((label_cast[0], label_cand), dim=0).tolist()
             inputs = inputs.to(device)
             
-            # print('input size :', inputs.size())      # 16, 3, 448, 448
+            # print('input size :', inputs.size())      # input.shape: batchsize, 3, 224, 224
             
             out = feature_extractor(inputs)
-            out = classifier(inputs)
+            out = classifier(out)
             loss = triplet_loss(out, label, num_cast)   # Size averaged loss
             loss.backward()
             optimizer.step()
@@ -85,7 +85,7 @@ def train(castloader: DataLoader, candloader: DataLoader, cand_data,
                 
             
 def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data, 
-        feature_extractor: nn.Module, classifier: nn.Module, 
+        feature_extractor: nn.Module, classifier: nn.Module, criterion,
         epoch, opt, device, feature_dim=1024) -> (float, float):    
     """
       Return: 
@@ -100,8 +100,9 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
 
     with torch.no_grad():
         for i, (cast, label_cast, mov) in enumerate(castloader, 1):
-            mov = mov[0]
-            cast = cast.to(device)              # cast_size = 1, num_cast+1, 3, 448, 448
+            mov = mov[0]                        # Un-packing list
+            
+            cast = cast.to(device)              # cast.shape: 1, num_cast+1, 3, 448, 448
             cast_out = feature_extractor(cast.squeeze(0))
             cast_out = classifier(cast_out)
             cast_out = cast_out.detach().cpu().view(-1, feature_dim)
@@ -115,7 +116,7 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             #     len(os.listdir(os.path.join(opt.dataroot, 'val', mov, 'candidates')))))
 
             for j, (cand, label_cand, index) in enumerate(candloader):
-                cand = cand.to(device) # cand.size = bs, 3, 448, 448
+                cand = cand.to(device)          # cand.shape: bs, 3, 448, 448
                 out = feature_extractor(cand)
                 out = classifier(out)
                 out = out.detach().cpu().view(-1, feature_dim)
@@ -124,11 +125,16 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
 
             print('[Validating] {}/{} {} processed, get {} features'.format(i, len(castloader), mov, cand_out.size()[0]))
 
-            # Get loss if need.
-            pass
-
             cast_feature = cast_out.to(device) #.numpy()
             candidate_feature = cand_out.to(device) #.numpy()
+
+            # Calculate L2 Loss if needed.
+            # if criterion is not None:
+            #     for i in range(label_cast):
+            #         pred = candidate_feature[index_out == i]
+            #         gt   = cast_feature.expand_as(pred)
+            #         loss += criterion(pred, gt).item()
+            #     pass
 
             # Getting the labels name from dataframe
             cast_name = cast_data.casts
@@ -225,6 +231,7 @@ def main(opt):
     train_cast = DataLoader(train_cast_data, batch_size=1, shuffle=False, num_workers=0)
     val_cast   = DataLoader(val_cast_data, batch_size=1, shuffle=False, num_workers=0)
     
+    # Models
     feature_extractor = FeatureExtractorFace().to(device)
     classifier = Classifier(2048).to(device)
     
@@ -233,15 +240,18 @@ def main(opt):
                     lr=opt.lr,
                     weight_decay=opt.weight_decay,
                     betas=(opt.b1, opt.b2)
-                )  
+                )
       
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
-    
-    # testing pre-trained model mAP performance
-    val_mAP = val(val_cast, val_cand,val_cast_data, val_data, feature_extractor, classifier, 0, opt, device)
-    record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%}\n'.format(0, opt.epochs, val_mAP)
-    print(record)
-    write_record(record, 'val_mAP.txt', opt.log_path)
+    criterion = nn.MSELoss(reduction='sum')
+
+    # Testing pre-trained model mAP performance
+    # val_mAP, val_loss = val(val_cast, val_cand,val_cast_data, val_data,
+    #                         feature_extractor, classifier, criterion,
+    #                         0, opt, device, feature_dim=opt.feature_dim)
+    # record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(0, opt.epochs, val_mAP, val_loss)
+    # print(record)
+    # write_record(record, 'val_mAP.txt', opt.log_path)
 
     best_mAP = 0.0
     for epoch in range(1, opt.epochs + 1):
@@ -251,7 +261,7 @@ def main(opt):
         # Train the models
         model, training_loss = train(train_cast, train_cand, train_data,
                                      feature_extractor, classifier, scheduler, optimizer,
-                                     epoch, device, opt)
+                                     epoch, device, opt, feature_dim=opt.feature_dim)
 
         # Print and log the training loss
         record = 'Epoch [%d/%d] TrainingLoss: %.4f' % (epoch, opt.epochs, training_loss)
@@ -264,10 +274,12 @@ def main(opt):
         
         # Validate the model performatnce
         if epoch % opt.save_interval == 0:
-            val_loss, val_mAP = val(val_cast, val_cand,val_cast_data, val_data, feature_extractor, classifier, epoch, opt, device)
+            val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data, 
+                                    feature_extractor, classifier, 
+                                    epoch, opt, device, feature_dim=opt.feature_dim)
             
             # Print and log the validation loss
-            record = 'Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4d}\n'.format(epoch, opt.epochs, val_mAP, val_loss)
+            record = 'Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(epoch, opt.epochs, val_mAP, val_loss)
             print(record)
             write_record(record, 'val_mAP.txt', opt.log_path)
     
@@ -300,6 +312,7 @@ if __name__ == '__main__':
     parser.add_argument('--momentum', default=0.9, type=float)
     parser.add_argument('--b1', default=0.9, type=float)
     parser.add_argument('--b2', default=0.999, type=float)
+    parser.add_argument('--feature_dim', default=1024, type=int)
     
     # I/O Setting (important !!!)
     parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
