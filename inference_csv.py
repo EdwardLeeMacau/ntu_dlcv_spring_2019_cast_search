@@ -189,21 +189,26 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             # result = evaluate_rerank.predict_1_movie(casts_features, cast_names, candidates_features, cand_names,
             #                             k1=opt.k1, k2=opt.k2, lambda_value=0.3)
             results_rerank.extend(result)
+    
+    for submission, results in ('cosine.csv', , 'rerank.csv'):
+        path = os.path.join(opt.out_csv, submission)
+        with open(path, 'w', newline=newline) as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+            writer.writeheader()
+            for r in results_cosine:
+                writer.writerow(r)
 
-    with open(opt.out_csv, 'w', newline=newline) as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
-        writer.writeheader()
-        for r in results_cosine:
-            writer.writerow(r)
+        print('Testing output "{}" writed. \n'.format(path))
 
-    print('Testing output "{}" writed. \n'.format(opt.out_csv))
-
-    if opt.action == 'val':
-        mAP, AP_dict = final_eval.eval(opt.out_csv, os.path.join(opt.dataroot, "val_GT.json"))
-        for key, val in AP_dict.items():
-            record = 'AP({}): {:.2%}'.format(key, val)
-            print(record)    
-        print('[ mAP = {:.2%} ]\n'.format(mAP))
+        if opt.action == 'val':
+            mAP, AP_dict = final_eval.eval(path, os.path.join(opt.dataroot, "val_GT.json"))
+            
+            if not mute:
+                for key, val in AP_dict.items():
+                    record = 'AP({}): {:.2%}'.format(key, val)
+                    print(record)    
+            
+            print('[ mAP = {:.2%} ]\n'.format(mAP))
 
     return mAP
 
