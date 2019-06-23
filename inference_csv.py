@@ -41,7 +41,7 @@ newline = '' if sys.platform.startswith('win') else '\n'
 
 def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data, 
          feature_extractor: nn.Module, classifier: nn.Module, 
-         opt, device, feature_dim=1024, k1=20, k2=6, lambda_value=0.3, mute=False):
+         opt, device, feature_dim=1024, k1=20, k2=6, lambda_value=0.3, mute=False) -> list:
     '''
       Inference by trained model, generated inferenced result if needed.
 
@@ -191,12 +191,14 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
                                         k1=opt.k1, k2=opt.k2, lambda_value=lambda_value)
             results_rerank.extend(result)
     
+    mAPs = []
     for submission, results in (('cosine.csv', results_cosine), ('rerank.csv', results_rerank)):
         path = os.path.join(opt.out_csv, submission)
+    
         with open(path, 'w', newline=newline) as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
             writer.writeheader()
-            for r in results_cosine:
+            for r in results:
                 writer.writerow(r)
 
         print('Testing output "{}" writed. \n'.format(path))
@@ -211,7 +213,9 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             
             print('[ mAP = {:.2%} ]\n'.format(mAP))
 
-    return mAP
+        mAPs.append(mAP)
+
+    return mAPs
 
 def main(opt):
     os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpu
@@ -294,20 +298,20 @@ def main(opt):
         # ------------------------- # 
         # Execute Test Function     # 
         # ------------------------- #
-        mAPs = []        
+        history = []        
         for k1, k2, value in configs:
             print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}]".format(k1, k2, value))
         
             with torch.no_grad():
-                mAP = test(test_cast, test_cand, test_cast_data, test_data, 
+                mAPs = test(test_cast, test_cand, test_cast_data, test_data, 
                     feature_extractor, classifier, opt, device, 
                     k1=k1, k2=k2, lambda_value=value, feature_dim=opt.out_dim, mute=True)
                 
-            mAPs.append(mAP)
+            history.append(mAPs)
 
         for (k1, k2, value), mAP in zip(configs, mAPs):
-            print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] mAP: {:.4f}".format(k1, k2, value, mAP))
-        
+            print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] [Cosine] mAP: {:.4f}".format(k1, k2, value, mAP[0]))
+            print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] [Rerank] mAP: {:.4f}".format(k1, k2, value, mAP[1]))
 
         return
 
