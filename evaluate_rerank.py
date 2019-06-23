@@ -126,7 +126,7 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
         
     return mAP
 
-def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, k1=20, k2=6, lambda_value=0.3) -> list:
+def predict_1_movie(cast_feature: torch.Tensor, cast_name, candidate_feature, candidate_name, k1=20, k2=6, lambda_value=0.3) -> list:
     """
       Input
       - cast_feature:       numpy array[n, feature_dim] (float)

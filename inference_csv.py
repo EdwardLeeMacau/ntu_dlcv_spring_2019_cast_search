@@ -10,6 +10,11 @@
 
   - python3 inference_csv.py --action val --dataroot ./IMDb_resize/ --model ./net_best.pth --out_csv ./result.csv
   >> 
+
+  # New argparser
+  - python3 inference_csv.py --model_features ~ --model_classifier ~ --out_csv ./validation.csv --out_dim 2048 --action val 
+                               rerank --k1 20 40 --k2 6 10 --lambda_value 0.3
+  >>
 """
 import argparse
 import csv
@@ -269,16 +274,16 @@ def main(opt):
         max_length = max([len(opt.k1), len(opt.k2), len(opt.lambda_value)])
         
         configs = itertools.product(opt.k1, opt.k2, opt.lambda_value)
-        feature_extractor = FeatureExtractorFace()# .to(device)
-        classifier = Classifier(fc_in_features=2048, fc_out=opt.out_dim)# .to(device)
+        feature_extractor = FeatureExtractorFace().to(device)
+        classifier = Classifier(fc_in_features=2048, fc_out=opt.out_dim).to(device)
         
         if opt.model_features:
             print("Parameter read: {}".format(opt.model_features))
-            feature_extractor = utils.load_network(feature_extractor, opt.model_features).to(device)
+            feature_extractor = utils.load_network(feature_extractor.cpu(), opt.model_features).to(device)
 
         if opt.model_classifier:
             print("Parameter read: {}".format(opt.model_classifier))
-            classifier = utils.load_network(classifier, opt.model_classifier).to(device).to(device)
+            classifier = utils.load_network(classifier.cpu(), opt.model_classifier).to(device).to(device)
 
         # ------------------------- # 
         # Execute Test Function     # 
