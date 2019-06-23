@@ -197,36 +197,36 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             # candidate_df = cand_data.all_candidates[mov]
             # candidate_name = candidate_df['index'].str[-18:-4].to_numpy()
             
-            result = evaluate.cosine_similarity(cast_feature, cast_names, candidate_feature, candidate_name)
-            results_cosine.extend(result)
+            # result = evaluate.cosine_similarity(cast_feature, cast_names, candidate_feature, candidate_name)
+            # results_cosine.extend(result)
 
-            # result = evaluate_rerank.predict_1_movie(cast_feature, cast_names, candidate_feature, candidate_name)
-            # results_rerank.extend(result)
+            result = evaluate_rerank.predict_1_movie(cast_feature, cast_names, candidate_feature, candidate_name)
+            results_rerank.extend(result)
 
     # Generate the csv with submission format
-    with open('result_cosine.csv', 'w', newline=newline) as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
-        writer.writeheader()
-        for r in results_cosine:
-            writer.writerow(r)
-    
-    # with open('result_rerank.csv', 'w', newline=newline) as csvfile:
+    # with open('result_cosine.csv', 'w', newline=newline) as csvfile:
     #     writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
     #     writer.writeheader()
     #     for r in results_cosine:
     #         writer.writerow(r)
     
+    with open('result_rerank.csv', 'w', newline=newline) as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+        writer.writeheader()
+        for r in results_cosine:
+            writer.writerow(r)
+    
     # Calculate mAP
-    mAP, AP_dict = final_eval.eval('result_cosine.csv', os.path.join(opt.dataroot , "val_GT.json"))
-    print('[Cosine] mAP: {:.2%}'.format(mAP))
+    # mAP, AP_dict = final_eval.eval('result_cosine.csv', os.path.join(opt.dataroot , "val_GT.json"))
+    # print('[Cosine] mAP: {:.2%}'.format(mAP))
+
+    mAP, AP_dict = final_eval.eval('result_rerank.csv', os.path.join(opt.dataroot , "val_GT.json"))
+    print('[Rerank] mAP: {:.2%}'.format(mAP))
 
     for key, val in AP_dict.items():
         record = '[Epoch {}] AP({}): {:.2%}'.format(epoch, key, val)
         print(record)
-        write_record(record, 'val_seperate_AP.txt', opt.log_path)
-    
-    # mAP, AP_dict = final_eval.eval('result_rerank.csv', os.path.join(opt.dataroot , "val_GT.json"))
-    # print('[Rerank] mAP: {:.2%}'.format(mAP))
+        # write_record(record, 'val_seperate_AP.txt', opt.log_path)
 
     return mAP, movie_loss / len(candloader)
 
@@ -352,12 +352,12 @@ def main(opt):
     # ----------------------------------------- #
     # Testing pre-trained model mAP performance #
     # ----------------------------------------- #
-    val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data,
-                            feature_extractor, classifier, val_criterion,
-                            0, opt, device, feature_dim=opt.feature_dim)
-    record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(0, opt.epochs, val_mAP, val_loss)
-    print(record)
-    write_record(record, 'val_mAP.txt', opt.log_path)
+    # val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data,
+    #                         feature_extractor, classifier, val_criterion,
+    #                         0, opt, device, feature_dim=opt.feature_dim)
+    # record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(0, opt.epochs, val_mAP, val_loss)
+    # print(record)
+    # write_record(record, 'val_mAP.txt', opt.log_path)
 
     # ----------------------------------------- #
     # Training                                  #
