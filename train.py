@@ -197,36 +197,42 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             # candidate_df = cand_data.all_candidates[mov]
             # candidate_name = candidate_df['index'].str[-18:-4].to_numpy()
             
-            # result = evaluate.cosine_similarity(cast_feature, cast_names, candidate_feature, candidate_name)
-            # results_cosine.extend(result)
+            result = evaluate.cosine_similarity(cast_feature, cast_names, candidate_feature, candidate_name)
+            results_cosine.extend(result)
 
             result = evaluate_rerank.predict_1_movie(cast_feature, cast_names, candidate_feature, candidate_name)
             results_rerank.extend(result)
 
     # Generate the csv with submission format
-    # with open('result_cosine.csv', 'w', newline=newline) as csvfile:
-    #     writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
-    #     writer.writeheader()
-    #     for r in results_cosine:
-    #         writer.writerow(r)
+    with open('result_cosine.csv', 'w', newline=newline) as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+        writer.writeheader()
+        for r in results_cosine:
+            writer.writerow(r)
     
     with open('result_rerank.csv', 'w', newline=newline) as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
         writer.writeheader()
         for r in results_cosine:
             writer.writerow(r)
-    
-    # Calculate mAP
-    # mAP, AP_dict = final_eval.eval('result_cosine.csv', os.path.join(opt.dataroot , "val_GT.json"))
-    # print('[Cosine] mAP: {:.2%}'.format(mAP))
 
+    # Calculate mAP with Rerank
     mAP, AP_dict = final_eval.eval('result_rerank.csv', os.path.join(opt.dataroot , "val_GT.json"))
     print('[Rerank] mAP: {:.2%}'.format(mAP))
 
     for key, val in AP_dict.items():
         record = '[Epoch {}] AP({}): {:.2%}'.format(epoch, key, val)
         print(record)
-        # write_record(record, 'val_seperate_AP.txt', opt.log_path)
+        write_record(record, 'val_seperate_AP.txt', opt.log_path)
+
+    # Calculate mAP with Cosine
+    mAP, AP_dict = final_eval.eval('result_cosine.csv', os.path.join(opt.dataroot , "val_GT.json"))
+    print('[Cosine] mAP: {:.2%}'.format(mAP))
+
+    for key, val in AP_dict.items():
+        record = '[Epoch {}] AP({}): {:.2%}'.format(epoch, key, val)
+        print(record)
+        write_record(record, 'val_seperate_AP.txt', opt.log_path)
 
     return mAP, movie_loss / len(candloader)
 
@@ -421,8 +427,8 @@ if __name__ == '__main__':
     # Training setting
     parser.add_argument('--batchsize', default=64, type=int, help='batchsize in training')
     parser.add_argument('--lr', default=5e-5, type=float, help='learning rate')
-    parser.add_argument('--milestones', default=[3, 5, 8], nargs='*', type=int)
-    parser.add_argument('--margin', default=[1, 1.2, 1.5], nargs='*', type=int)
+    parser.add_argument('--milestones', default=[3, 5, 10], nargs='*', type=int)
+    parser.add_argument('--margin', default=[1.2, 1.4, 1.6], nargs='*', type=int)
     parser.add_argument('--gamma', default=0.1, type=float)
     parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--weight_decay', default=5e-4, type=float)
