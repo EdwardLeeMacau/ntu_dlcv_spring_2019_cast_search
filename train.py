@@ -18,6 +18,7 @@
 
   - Example:
     python3.7 train.py --batchsize 64 --weight_decay 0 --mpath ./model_features/ --log_path ./log_features/ --dataroot ./IMDb_resize/ --load_features
+    python3.7 train.py --batchsize 64 --weight_decay 0 --mpath ./model_img_face/ --log_path ./log_img/ --dataroot ./IMDb_resize/ --feature_norm
 """
 import argparse
 import csv
@@ -93,7 +94,11 @@ def train(castloader: DataLoader, candloader: DataLoader, cand_data,
             else:
                 out = classifier(inputs)
 
-            loss = triplet_loss(out, label, num_cast, criterion=criterion)   # Size averaged loss
+            if opt.load_features:
+                _num_cast = num_cast + 1
+            else:
+                _num_cast = num_cast
+            loss = triplet_loss(out, label, _num_cast, triplet_criterion=criterion)   # Size averaged loss
             loss.backward()
             optimizer.step()
             
@@ -320,7 +325,8 @@ def main(opt):
     # ------------------------- # 
     # Model, optim initialize   # 
     # ------------------------- #
-    classifier = Classifier(fc_in_features=2048, fc_out=opt.feature_dim).to(device)
+    classifier = Classifier(
+        fc_in_features=2048, fc_out=opt.feature_dim, normalize=opt.feature_norm).to(device)
     feature_extractor = None
     params = [{'params': classifier.parameters()}]
     if not opt.load_features:
@@ -424,6 +430,7 @@ if __name__ == '__main__':
     parser.add_argument('--b1', default=0.9, type=float)
     parser.add_argument('--b2', default=0.999, type=float)
     parser.add_argument('--feature_dim', default=1024, type=int)
+    parser.add_argument('--feature_norm', action='store_true')
     
     # I/O Setting (important !!!)
     parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
