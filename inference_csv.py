@@ -186,9 +186,8 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             # predict_ranking
             result = evaluate.cosine_similarity(casts_features, cast_names, candidates_features, cand_names, mute=mute)
             results_cosine.extend(result)
-
             result = evaluate_rerank.predict_1_movie(casts_features, cast_names, candidates_features, cand_names,
-                                        k1=opt.k1, k2=opt.k2, lambda_value=lambda_value)
+                                        k1=k1, k2=k2, lambda_value=lambda_value)
             results_rerank.extend(result)
     
     mAPs = []
@@ -261,7 +260,7 @@ def main(opt):
         # Model initialize          # 
         # ------------------------- #
         feature_extractor = FeatureExtractorFace()# .to(device)
-        classifier = Classifier()# .to(device)
+        classifier = Classifier(fc_in_features=2048, fc_out=opt.out_dim)# .to(device)
         
         if opt.model_features:
             print("Parameter read: {}".format(opt.model_features))
@@ -277,7 +276,7 @@ def main(opt):
         with torch.no_grad():
             test(test_cast, test_cand, test_cast_data, test_data, 
                 feature_extractor, classifier, opt, device, 
-                k1=20, k2=6, lambda_value=0.3, feature_dim=opt.out_dim, mute=False)
+                k1=40, k2=6, lambda_value=0.1, feature_dim=opt.out_dim, mute=False)
         
         return
     
@@ -299,7 +298,8 @@ def main(opt):
         # ------------------------- # 
         # Execute Test Function     # 
         # ------------------------- #
-        history = []        
+        history = []
+
         for k1, k2, value in configs:
             print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}]".format(k1, k2, value))
         
@@ -310,9 +310,9 @@ def main(opt):
                 
             history.append(mAPs)
 
-        for (k1, k2, value), mAP in zip(configs, mAPs):
-            print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] [Cosine] mAP: {:.4f}".format(k1, k2, value, mAP[0]))
-            print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] [Rerank] mAP: {:.4f}".format(k1, k2, value, mAP[1]))
+        for (k1, k2, value), history in zip(configs, history):
+            print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] [Cosine] mAP: {:.4f}".format(k1, k2, value, history[0]))
+            print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] [Rerank] mAP: {:.4f}".format(k1, k2, value, history[1]))
 
         return
 
