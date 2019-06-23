@@ -140,11 +140,7 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             cast_out = cast_out.detach().cpu().view(-1, feature_dim)
             
             label_cast = torch.tensor(label_cast).squeeze(0)
-
-            print("\n\ncast_names :", cast_names)
             cast_names = [x[0] for x in cast_names]
-            print("\n\ncast_names :", cast_names, '\n\n')
-
             
             print("[Validating] Number of candidates should be equal to: {}".format(
                 len(os.listdir(os.path.join(opt.dataroot, 'val', mov, 'candidates')))))
@@ -191,9 +187,7 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             
             # Getting the labels name from dataframe
             # Getting the labels name
-            cast_names = np.asarray(cast_names, dtype=object)
-            print("\n\ncast_names :", cast_names, '\n\n')
-            
+            cast_names = np.asarray(cast_names, dtype=object)            
             candidate_name = np.asarray(cand_names, dtype=object)
             # candidate_df = cand_data.all_candidates[mov]
             # candidate_name = candidate_df['index'].str[-18:-4].to_numpy()
