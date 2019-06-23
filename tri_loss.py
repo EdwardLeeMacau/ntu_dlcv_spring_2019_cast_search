@@ -47,10 +47,10 @@ def triplet_loss(inputs, labels: list, cast_num: int, criterion=criterion):
     # print(index_p)
 
     # Make the P/N Pairs with index_p and index_n
-    print("index_n :", index_n)
-    print("index_p :", index_p)
-    print("x_p.shape ;", x_p.shape)
-    print()
+    # print("index_n :", index_n)
+    # print("index_p :", index_p)
+    # print("x_p.shape ;", x_p.shape)
+    # print()
     x_p, x_n = x_p[index_p], x_p[index_n]
 
     # print(x_a[0])

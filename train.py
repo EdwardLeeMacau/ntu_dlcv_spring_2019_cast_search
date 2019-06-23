@@ -37,7 +37,7 @@ import evaluate_rerank
 import final_eval
 import utils
 from imdb import CandDataset, CastDataset
-from model_res50 import Classifier, FeatureExtractorFace
+from model_res50 import Classifier, FeatureExtractorFace, FeatureExtractorOrigin
 from tri_loss import triplet_loss
 
 y = {
@@ -326,7 +326,10 @@ def main(opt):
     if not opt.load_features:
         # one way to set difference learning rate:
         # params.append({'params': feature_extractor.parameters(), 'lr': 1e-3})
-        feature_extractor = FeatureExtractorFace().to(device)
+        if opt.model_name == 'face':
+            feature_extractor = FeatureExtractorFace().to(device)
+        elif opt.model_name == 'origin':
+            feature_extractor = FeatureExtractorOrigin().to(device)
         params.append({'params': feature_extractor.parameters()})
         print("Train the model with Feature Extractor + Classifier")
     
@@ -337,7 +340,7 @@ def main(opt):
     )
       
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
-    train_criterion = nn.TripletMarginLoss(margin=0.5)
+    train_criterion = nn.TripletMarginLoss(margin=1)
     val_criterion = nn.MSELoss(reduction='sum') # For validation only.
 
     # ----------------------------------------- #
@@ -406,11 +409,14 @@ def main(opt):
 if __name__ == '__main__':    
     parser = argparse.ArgumentParser(description='Training')
     
+    # Model setting
+    parser.add_argument('--model_name', default='face', help='(face / origin) choose which model to train')
+
     # Training setting
     parser.add_argument('--batchsize', default=64, type=int, help='batchsize in training')
     parser.add_argument('--lr', default=5e-5, type=float, help='learning rate')
-    parser.add_argument('--milestones', default=[10, 20, 30], nargs='*', type=int)
-    parser.add_argument('--margin', default=[0.5, 1, 1.5], nargs='*', type=int)
+    parser.add_argument('--milestones', default=[3, 5, 8], nargs='*', type=int)
+    parser.add_argument('--margin', default=[1, 1.2, 1.5], nargs='*', type=int)
     parser.add_argument('--gamma', default=0.1, type=float)
     parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--weight_decay', default=5e-4, type=float)
