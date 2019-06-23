@@ -48,17 +48,14 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
     
     results_cosine = []
     results_rerank = []
-    
-    if opt.save_feature:
-        os.makedirs('./inference/', exist_ok=True)
-        os.makedirs('./inference/val/', exist_ok=True)
-        os.makedirs('./inference/test/', exist_ok=True)
 
-    # ------------------------- # 
-    # If ground truth exists    # 
-    # ------------------------- #
+    # --------------------------------- # 
+    # If ground truth exists            # 
+    # --------------------------------- #
     if opt.action == 'val':
         for i, (cast, labels, moviename, cast_names) in enumerate(castloader, 1):
+            print("[{:3d}/{:3d}]".format(i, len(castloader)))
+
             moviename = moviename[0]
 
             cast = cast.to(device) # cast_size = 1, num_cast + 1, 3, 448, 448
@@ -100,28 +97,12 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             #                             k1=opt.k1, k2=opt.k2, lambda_value=0.3)
             results_rerank.extend(result)
 
-        with open(opt.out_csv, 'w', newline=newline) as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
-            writer.writeheader()
-            for r in results:
-                writer.writerow(r)
-        
-        # mAP, AP_dict = final_eval.eval(opt.out_csv, opt.gt)
-        mAP, AP_dict = final_eval.eval(opt.out_csv, os.path.join(opt.dataroot, "val_GT.json"))
-        for key, val in AP_dict.items():
-            record = 'AP({}): {:.2%}'.format(key, val)
-            print(record)
-        
-        print('[ mAP = {:.2%} ]\n'.format(mAP))
-
-        return
-
     # --------------------------------- # 
     # If ground truth doesn't exists    # 
     # --------------------------------- #
     if opt.action == 'test':
         for i, (cast, moviename, cast_names) in enumerate(castloader, 1):
-            print("i: {}, total: {}".format(i, len(castloader)))
+            print("[{:3d}/{:3d}]".format(i, len(castloader)))
 
             moviename = moviename[0]    # unpacked from batch
 
@@ -136,13 +117,6 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
                 cast_out = cast_out.detach().cpu().view(-1, feature_dim)
 
                 casts_features = cast_out.to(device)
-
-                # Save cast features 
-                if opt.save_feature:
-                    feature_path = './inference/test/{}/cast/'.format(moviename)
-                    os.makedirs(feature_path, exist_ok=True)
-                    np.save(os.path.join(feature_path, "features.npy"), casts_features)
-                    np.save(os.path.join(feature_path, "names.npy"), cast_file_name_list[0])
 
                 print("generating {}'s candidate features".format(moviename))
                 
@@ -165,6 +139,13 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
                 cast_names = np.asarray(cast_names, dtype=object)
                 cand_names = np.asarray(cand_names, dtype=object)
 
+                # Save cast features 
+                if opt.save_feature:
+                    feature_path = './inference/test/{}/cast/'.format(moviename)
+                    os.makedirs(feature_path, exist_ok=True)
+                    np.save(os.path.join(feature_path, "features.npy"), casts_features)
+                    np.save(os.path.join(feature_path, "names.npy"), cast_names)
+
                 # Save candidates features
                 if opt.save_feature:
                     feature_path = './inference/test/{}/candidates/'.format(moviename)
@@ -175,21 +156,19 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
                 print('imgs_num({}) / file_names({})'.format(cand_out.size()[0], len(cand_names)))
             
             else:   # if load_feature:
-                raise NotImplementedError
-
                 print("loading {}'s cast features".format(mov))
                 feature_path = './inference/test/{}/cast/features.npy'.format(mov)
                 names_path = './inference/test/{}/cast/names.npy'.format(mov)
                 casts_features = np.load(feature_path)
-                cast_file_name_list = list(np.load(names_path))
+                cast_names     = np.load(names_path)
 
                 print("loading {}'s candidate features".format(mov))
-                feature_path = './feature_np/test/{}/candidates/features.npy'.format(mov)
-                names_path = './feature_np/test/{}/candidates/names.npy'.format(mov)
+                feature_path = './inference/test/{}/candidates/features.npy'.format(mov)
+                names_path = './inference/test/{}/candidates/names.npy'.format(mov)
                 candidates_features = np.load(feature_path)
-                cand_file_name_list = list(np.load(names_path))
+                cand_names          = np.load(names_path)
 
-                print('file_names({})'.format(len(cand_file_name_list)))
+                print('file_names({})'.format(len(cand_names)))
 
             print('[Testing] {} processing predict_ranking ... \n'.format(moviename))
             
@@ -201,15 +180,31 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             #                             k1=opt.k1, k2=opt.k2, lambda_value=0.3)
             results_rerank.extend(result)
 
-        with open(opt.out_csv, 'w', newline=newline) as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
-            writer.writeheader()
-            for r in results:
-                writer.writerow(r)
-    
-        print('Testing output "{}" writed. \n'.format(opt.out_csv))
+    with open(opt.out_csv, 'w', newline=newline) as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+        writer.writeheader()
+        for r in results_cosine:
+            writer.writerow(r)
 
-        return
+    if opt.action == 'val':
+        mAP, AP_dict = final_eval.eval(opt.out_csv, os.path.join(opt.dataroot, "val_GT.json"))
+        for key, val in AP_dict.items():
+            record = 'AP({}): {:.2%}'.format(key, val)
+            print(record)    
+        print('[ mAP = {:.2%} ]\n'.format(mAP))
+
+    return
+
+
+    with open(opt.out_csv, 'w', newline=newline) as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+        writer.writeheader()
+        for r in results:
+            writer.writerow(r)
+
+    print('Testing output "{}" writed. \n'.format(opt.out_csv))
+
+    return
 
 def main(opt):
     os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpu
@@ -296,7 +291,12 @@ if __name__ == '__main__':
     # Prints the setting
     utils.details(opt)
 
-    # Check files here
+    # Make directories
+    os.makedirs('./inference/', exist_ok=True)
+    os.makedirs('./inference/val/', exist_ok=True)
+    os.makedirs('./inference/test/', exist_ok=True)
+
+    # Check files exists
     if not os.path.exists(opt.dataroot):
         raise IOError("{} is not exists".format(opt.dataroot))
     
