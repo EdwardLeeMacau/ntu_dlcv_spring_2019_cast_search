@@ -26,7 +26,7 @@ def normalize_ndarray(a: np.ndarray, axis: int) -> np.ndarray:
     
     return a
 
-def cosine_similarity(cast_feature: torch.Tensor, cast_name: np.ndarray, candidate_feature: torch.Tensor, candidate_name: np.ndarray) -> list:
+def cosine_similarity(cast_feature: torch.Tensor, cast_name: np.ndarray, candidate_feature: torch.Tensor, candidate_name: np.ndarray, mute=False) -> list:
     """
       Using cosine_similarity to sorting the query priorities.
 
@@ -41,11 +41,12 @@ def cosine_similarity(cast_feature: torch.Tensor, cast_name: np.ndarray, candida
     distance = torch.mm(cast_feature, candidate_feature.transpose(0, 1))
     index    = torch.argsort(distance, dim=1, descending=True).cpu().numpy()
 
-    print("Distance.shape: ", distance.shape)
-    print("Min distance: ")
-    print(list(map(lambda x: round(x, 4), distance.min(dim=1)[0].cpu().numpy().tolist())))     # Print values only, indices are deprecated
-    print("Max distance: ")
-    print(list(map(lambda x: round(x, 4), distance.max(dim=1)[0].cpu().numpy().tolist())))     # Print values only, indices are deprecated
+    if not mute:
+        print("Distance.shape: ", distance.shape)
+        print("Min distance: ")
+        print(list(map(lambda x: round(x, 4), distance.min(dim=1)[0].cpu().numpy().tolist())))     # Print values only, indices are deprecated
+        print("Max distance: ")
+        print(list(map(lambda x: round(x, 4), distance.max(dim=1)[0].cpu().numpy().tolist())))     # Print values only, indices are deprecated
 
     for i in range(index.shape[0]):
         result.append({

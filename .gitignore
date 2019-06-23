@@ -32,3 +32,5 @@
 # all
 *.csv
 *.jpg
+*.txt
+*.pth

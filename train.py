@@ -15,6 +15,10 @@
 
   - Other pramameters:
   >> Hyperparameter tuning
+
+  - Example:
+    python3.7 train.py --batchsize 64 --weight_decay 0 --mpath ./model_features/ --log_path ./log_features/ --dataroot ./IMDb_resize/ --load_features
+    python3.7 train.py --batchsize 64 --weight_decay 0 --mpath ./model_img_face/ --log_path ./log_img/ --dataroot ./IMDb_resize/ --feature_norm
 """
 import argparse
 import csv
@@ -34,7 +38,7 @@ import evaluate_rerank
 import final_eval
 import utils
 from imdb import CandDataset, CastDataset
-from model_res50 import Classifier, FeatureExtractorFace
+from model_res50 import Classifier, FeatureExtractorFace, FeatureExtractorOrigin
 from tri_loss import triplet_loss
 
 y = {
@@ -68,7 +72,10 @@ def train(castloader: DataLoader, candloader: DataLoader, cand_data,
         num_cast     = len(label_cast)
         running_loss = 0.0
 
-        cand_data.set_mov_name_train(moviename)
+        if feature_extractor is not None:
+            cand_data.set_mov_name_train(moviename)
+        else:
+            cand_data.set_mov_name_feature(moviename)
 
         for j, (cand, label_cand, _) in enumerate(candloader, 1):    
             bs = cand.size()[0]                         # cand.shape: batchsize, 3, 224, 224
@@ -82,11 +89,16 @@ def train(castloader: DataLoader, candloader: DataLoader, cand_data,
             
             if feature_extractor is not None:
                 out = feature_extractor(inputs)
+                # print("train cand feature output shape :", out.shape)
                 out = classifier(out)
             else:
                 out = classifier(inputs)
 
-            loss = triplet_loss(out, label, num_cast, criterion=criterion)   # Size averaged loss
+            if opt.load_features:
+                _num_cast = num_cast + 1
+            else:
+                _num_cast = num_cast
+            loss = triplet_loss(out, label, _num_cast, triplet_criterion=criterion)   # Size averaged loss
             loss.backward()
             optimizer.step()
             
@@ -123,8 +135,13 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             mov = mov[0]                        # Un-packing list
             
             cast = cast.to(device)              # cast.shape: 1, num_cast+1, 3, 448, 448
-            cast_out = feature_extractor(cast.squeeze(0))
-            cast_out = classifier(cast_out)
+
+            if feature_extractor is not None:
+                cast_out = feature_extractor(cast.squeeze(0))
+                # print("val cast feature output shape :", cast_out.shape)
+                cast_out = classifier(cast_out)
+            else:
+                cast_out = classifier(cast.squeeze(0))
             cast_out = cast_out.detach().cpu().view(-1, feature_dim)
             
             label_cast = torch.tensor(label_cast).squeeze(0)
@@ -136,12 +153,18 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             cand_out    = torch.tensor([])
             cand_labels = torch.tensor([], dtype=torch.long)
             cand_names  = []
-            cand_data.set_mov_name_val(mov)
+
+            if feature_extractor is not None:
+                cand_data.set_mov_name_val(mov)
+            else:
+                cand_data.set_mov_name_feature(mov)
+
             for j, (cand, cand_label, cand_name) in enumerate(candloader):
                 cand = cand.to(device)          # cand.shape: bs, 3, height, wigth
 
                 if feature_extractor is not None:
                     out = feature_extractor(cand)
+                    # print("val cand feature output shape :", out.shape)
                     out = classifier(out)
                 else:
                     out = classifier(cand)
@@ -169,17 +192,16 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             
             # Getting the labels name from dataframe
             # Getting the labels name
-            cast_names = np.asarray(cast_names, dtype=object)
-            cand_names = np.asarray(cand_names, dtype=object)
-
-            candidate_df = cand_data.all_candidates[mov]
-            candidate_name = candidate_df['index'].str[-18:-4].to_numpy()
+            cast_names = np.asarray(cast_names, dtype=object)            
+            candidate_name = np.asarray(cand_names, dtype=object)
+            # candidate_df = cand_data.all_candidates[mov]
+            # candidate_name = candidate_df['index'].str[-18:-4].to_numpy()
             
             result = evaluate.cosine_similarity(cast_feature, cast_names, candidate_feature, candidate_name)
             results_cosine.extend(result)
 
-            # result = evaluate_rerank.predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name)
-            results_rerank.extend(result)
+            # result = evaluate_rerank.predict_1_movie(cast_feature, cast_names, candidate_feature, candidate_name)
+            # results_rerank.extend(result)
 
     # Generate the csv with submission format
     with open('result_cosine.csv', 'w', newline=newline) as csvfile:
@@ -188,11 +210,11 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
         for r in results_cosine:
             writer.writerow(r)
     
-    with open('result_rerank.csv', 'w', newline=newline) as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
-        writer.writeheader()
-        for r in results_cosine:
-            writer.writerow(r)
+    # with open('result_rerank.csv', 'w', newline=newline) as csvfile:
+    #     writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+    #     writer.writeheader()
+    #     for r in results_cosine:
+    #         writer.writerow(r)
     
     # Calculate mAP
     mAP, AP_dict = final_eval.eval('result_cosine.csv', os.path.join(opt.dataroot , "val_GT.json"))
@@ -203,8 +225,8 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
         print(record)
         write_record(record, 'val_seperate_AP.txt', opt.log_path)
     
-    mAP, AP_dict = final_eval.eval('result_rerank.csv', os.path.join(opt.dataroot , "val_GT.json"))
-    print('[Rerank] mAP: {:.2%}'.format(mAP))
+    # mAP, AP_dict = final_eval.eval('result_rerank.csv', os.path.join(opt.dataroot , "val_GT.json"))
+    # print('[Rerank] mAP: {:.2%}'.format(mAP))
 
     return mAP, movie_loss / len(candloader)
 
@@ -239,7 +261,7 @@ def write_record(record, filename: str, folder: str):
 # main function #
 # ------------- #
 def main(opt):
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu)
+    os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpu
     device = torch.device("cuda")
     
     # ------------------------- # 
@@ -256,9 +278,14 @@ def main(opt):
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
     
+    if opt.load_features:
+        root = opt.feature_root
+    else:
+        root = opt.dataroot
+
     # Candidates Datas    
     train_data = CandDataset(
-        data_path=os.path.join(opt.dataroot, 'train'),
+        data_path=os.path.join(root, 'train'),
         drop_others=True,
         transform=transform,
         action='train',
@@ -266,7 +293,7 @@ def main(opt):
     )
     
     val_data = CandDataset(
-        data_path=os.path.join(opt.dataroot, 'val'),
+        data_path=os.path.join(root, 'val'),
         drop_others=False,
         transform=transform,
         action='val',
@@ -275,7 +302,7 @@ def main(opt):
 
     # Cast Datas
     train_cast_data = CastDataset(
-        data_path=os.path.join(opt.dataroot, 'train'),
+        data_path=os.path.join(root, 'train'),
         drop_others=True,
         transform=transform,
         action='train',
@@ -283,7 +310,7 @@ def main(opt):
     )
 
     val_cast_data = CastDataset(
-        data_path=os.path.join(opt.dataroot, 'val'),
+        data_path=os.path.join(root, 'val'),
         drop_others=False,
         transform=transform,
         action='val',
@@ -298,13 +325,17 @@ def main(opt):
     # ------------------------- # 
     # Model, optim initialize   # 
     # ------------------------- #
-    classifier = Classifier(fc_in_features=2048, fc_out=opt.feature_dim).to(device)
+    classifier = Classifier(
+        fc_in_features=2048, fc_out=opt.feature_dim, normalize=opt.feature_norm).to(device)
     feature_extractor = None
     params = [{'params': classifier.parameters()}]
     if not opt.load_features:
         # one way to set difference learning rate:
         # params.append({'params': feature_extractor.parameters(), 'lr': 1e-3})
-        feature_extractor = FeatureExtractorFace().to(device)
+        if opt.model_name == 'face':
+            feature_extractor = FeatureExtractorFace().to(device)
+        elif opt.model_name == 'origin':
+            feature_extractor = FeatureExtractorOrigin().to(device)
         params.append({'params': feature_extractor.parameters()})
         print("Train the model with Feature Extractor + Classifier")
     
@@ -315,7 +346,7 @@ def main(opt):
     )
       
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=opt.milestones, gamma=opt.gamma)
-    train_criterion = nn.TripletMarginLoss(margin=0.25)
+    train_criterion = nn.TripletMarginLoss(margin=1)
     val_criterion = nn.MSELoss(reduction='sum') # For validation only.
 
     # ----------------------------------------- #
@@ -384,11 +415,14 @@ def main(opt):
 if __name__ == '__main__':    
     parser = argparse.ArgumentParser(description='Training')
     
+    # Model setting
+    parser.add_argument('--model_name', default='face', help='(face / origin) choose which model to train')
+
     # Training setting
     parser.add_argument('--batchsize', default=64, type=int, help='batchsize in training')
     parser.add_argument('--lr', default=5e-5, type=float, help='learning rate')
-    parser.add_argument('--milestones', default=[10, 20, 30], nargs='*', type=int)
-    parser.add_argument('--margin', default=[0.5, 1, 1.5], nargs='*', type=int)
+    parser.add_argument('--milestones', default=[3, 5, 8], nargs='*', type=int)
+    parser.add_argument('--margin', default=[1, 1.2, 1.5], nargs='*', type=int)
     parser.add_argument('--gamma', default=0.1, type=float)
     parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--weight_decay', default=5e-4, type=float)
@@ -396,17 +430,19 @@ if __name__ == '__main__':
     parser.add_argument('--b1', default=0.9, type=float)
     parser.add_argument('--b2', default=0.999, type=float)
     parser.add_argument('--feature_dim', default=1024, type=int)
+    parser.add_argument('--feature_norm', action='store_true')
     
     # I/O Setting (important !!!)
     parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
     parser.add_argument('--log_path', default='log', help='folder to output logs')
     parser.add_argument('--dataroot', default='./IMDb_Resize/', type=str, help='Directory of dataroot')
     parser.add_argument('--load_features', action='store_true', help='If true, dataloader will load the image in features')
+    parser.add_argument('--feature_root', default='./feature_np/face/', type=str, help='Directory of features data root')
     # parser.add_argument('--gt_file', default='./IMDb_Resize/val_GT.json', type=str, help='Directory of training set.')
     # parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
     
     # Device Setting
-    parser.add_argument('--gpu', default=0, nargs='*', type=int, help='')
+    parser.add_argument('--gpu', default='0', type=str, help='')
     parser.add_argument('--threads', default=0, type=int)
 
     # Others Setting
