@@ -55,8 +55,8 @@ def re_ranking(q_g_dist, q_q_dist, g_g_dist, k1=20, k2=6, lambda_value=0.3) -> n
     # --------------------------------- #
     
     original_dist = np.concatenate(
-      [np.concatenate([q_q_dist, q_g_dist], axis=1),
-       np.concatenate([q_g_dist.T, g_g_dist], axis=1)], axis=0
+        [np.concatenate([q_q_dist, q_g_dist], axis=1),
+        np.concatenate([q_g_dist.T, g_g_dist], axis=1)], axis=0
     )
     
     # change the cosine similarity metric to euclidean similarity metric
@@ -126,7 +126,7 @@ def re_ranking(q_g_dist, q_q_dist, g_g_dist, k1=20, k2=6, lambda_value=0.3) -> n
         jaccard_dist[i] = 1 - temp_min / (2.-temp_min)
 
     
-    final_dist = jaccard_dist*(1-lambda_value) + original_dist*lambda_value
+    final_dist = jaccard_dist * (1-lambda_value) + original_dist * lambda_value
     del original_dist
     del V
     del jaccard_dist

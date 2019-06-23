@@ -103,8 +103,9 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
 
             result = evaluate.cosine_similarity(casts_features, cast_names, candidates_features, cand_names, mute=mute)
             results_cosine.extend(result)
-            # result = evaluate_rerank.predict_1_movie(casts_features, cast_name, candidates_features, cand_names, 
-            #                             k1=k1, k2=k2, lambda_value=lambda_value)
+            
+            result = evaluate_rerank.predict_1_movie(casts_features, cast_names, candidates_features, cand_names, 
+                                        k1=k1, k2=k2, lambda_value=lambda_value)
             results_rerank.extend(result)
 
     # --------------------------------- # 
@@ -186,11 +187,11 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             result = evaluate.cosine_similarity(casts_features, cast_names, candidates_features, cand_names, mute=mute)
             results_cosine.extend(result)
 
-            # result = evaluate_rerank.predict_1_movie(casts_features, cast_names, candidates_features, cand_names,
-            #                             k1=opt.k1, k2=opt.k2, lambda_value=0.3)
+            result = evaluate_rerank.predict_1_movie(casts_features, cast_names, candidates_features, cand_names,
+                                        k1=opt.k1, k2=opt.k2, lambda_value=lambda_value)
             results_rerank.extend(result)
     
-    for submission, results in ('cosine.csv', , 'rerank.csv'):
+    for submission, results in (('cosine.csv', results_cosine), ('rerank.csv', results_rerank)):
         path = os.path.join(opt.out_csv, submission)
         with open(path, 'w', newline=newline) as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])

@@ -70,9 +70,10 @@ class FeatureExtractorOrigin(nn.Module):
         return feature
 
 class Classifier(nn.Module):
-    def __init__(self, fc_in_features=2048, fc_out=1024, drop=0.5):
+    def __init__(self, fc_in_features=2048, fc_out=1024, drop=0.5, normalize=False):
         super(Classifier, self).__init__()
 
+        self.normalize = normalize
         self.resnet_classifier = nn.Sequential(
                             nn.Linear(fc_in_features, 2048),
                             nn.BatchNorm1d(2048),
@@ -83,6 +84,10 @@ class Classifier(nn.Module):
 
     def forward(self, input_data):        
         feature = self.resnet_classifier(input_data)
+
+        if self.normalize:
+            feature = nn.functional.normalize(feature, dim=1)
+
         return feature
 
 def model_structure_unittest():

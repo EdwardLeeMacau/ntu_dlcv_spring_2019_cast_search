@@ -140,9 +140,9 @@ def predict_1_movie(cast_feature: torch.Tensor, cast_name, candidate_feature, ca
     cast_feature      = torch.nn.functional.normalize(cast_feature, dim=1)
     candidate_feature = torch.nn.functional.normalize(candidate_feature, dim=1)
 
-    q_g_distance = torch.mm(cast_feature, candidate_feature.transpose(0, 1))
-    q_q_distance = torch.mm(cast_feature, cast_feature.transpose(0, 1))
-    g_g_distance = torch.mm(candidate_feature, candidate_feature.transpose(0, 1))
+    q_g_distance = torch.mm(cast_feature, candidate_feature.transpose(0, 1)).cpu().numpy()
+    q_q_distance = torch.mm(cast_feature, cast_feature.transpose(0, 1)).cpu().numpy()
+    g_g_distance = torch.mm(candidate_feature, candidate_feature.transpose(0, 1)).cpu().numpy()
     
     # Re_ranking() using L2 Distance as the result, smaller distance mean 'closer' with each other
     final_distance = re_ranking(q_g_distance, q_q_distance, g_g_distance, k1=k1, k2=k2, lambda_value=lambda_value)
