@@ -5,15 +5,15 @@
   Synopsis     [ To inference trained model with testing images, output csv file ]
 
   Example:
-  - python3 inference_csv.py --action test --dataroot ./IMDb_resize/ --model ./net_best.pth --out_csv ./result.csv --save_feature
+  - python3 inference_csv.py --action test --dataroot ./IMDb_resize/ --model ./net_best.pth --out_csv ./result/ --save_feature
   >> 
 
-  - python3 inference_csv.py --action val --dataroot ./IMDb_resize/ --model ./net_best.pth --out_csv ./result.csv
+  - python3 inference_csv.py --action val --dataroot ./IMDb_resize/ --model ./net_best.pth --out_csv ./result/
   >> 
 
   # New argparser
-  - python3 inference_csv.py --model_features ~ --model_classifier ~ --out_csv ./validation.csv --out_dim 2048 --action val 
-                               rerank --k1 20 40 --k2 6 10 --lambda_value 0.3
+  - python3 inference_csv.py --model_features ~ --model_classifier ~ --out_csv ./validatio/ --out_dim 2048 --action val 
+                               rerank --k1 20 40 --k2 6 10 --lambda_value 0.15
   >>
 """
 import argparse
@@ -193,6 +193,7 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
     
     mAPs = []
     for submission, results in (('cosine.csv', results_cosine), ('rerank.csv', results_rerank)):
+        os.makedirs(opt.out_csv, exist_ok=True)
         path = os.path.join(opt.out_csv, submission)
     
         with open(path, 'w', newline=newline) as csvfile:
@@ -329,7 +330,7 @@ if __name__ == '__main__':
     parser.add_argument('--action', default='test', type=str, help='action type (test / val)')
     parser.add_argument('--out_dim', default=1024, type=int, help='to set the output dimensions of FC Layer')
     parser.add_argument('--gt', type=str, help='if gt_file is exists, measure the mAP.')
-    parser.add_argument('--out_csv',  default='./inference.csv', help='output csv file name')
+    parser.add_argument('--out_csv',  default='./inference/', help='output csv folder name')
     parser.add_argument('--save_feature', action='store_true', help='save new np features when processing')
     parser.add_argument('--load_feature', action='store_true', help='load old np features when processing')
     # Device Setting

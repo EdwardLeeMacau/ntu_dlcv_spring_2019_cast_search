@@ -336,8 +336,8 @@ def main(opt):
             feature_extractor = FeatureExtractorFace().to(device)
         elif opt.model_name == 'origin':
             feature_extractor = FeatureExtractorOrigin().to(device)
-        params.append({'params': feature_extractor.parameters()})
-        print("Train the model with Feature Extractor + Classifier")
+        # params.append({'params': feature_extractor.parameters()})
+        # print("Train the model with Feature Extractor + Classifier")
     
     optimizer = torch.optim.Adam(params,
         lr=opt.lr,
