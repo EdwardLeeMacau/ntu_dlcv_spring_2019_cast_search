@@ -67,10 +67,12 @@ import utils
 class CandDataset(Dataset):
     def __init__(self, data_path, drop_others=True, transform=None, debug=False, action='train', load_feature=False):
         '''
-        - drop_others : only used when aciton = 'train', optional ('val', 'test', 'save' will not drop anyway)
+          - drop_others : only used when aciton = 'train', optional ('val', 'test', 'save' will not drop anyway)
         '''
-        assert action in ('train', 'val', 'test', 'save'), "Wrong params 'action'"
         self.load_feature = load_feature
+        
+        if not action in ('train', 'val', 'test', 'save'):
+            raise ValueError("Wrong params 'action'")
         if load_feature and action == 'save':
             raise ValueError('Cannot save and load features simultanesouly, please choose one of them')
         if load_feature and action == 'test':
@@ -228,7 +230,9 @@ class CandDataset(Dataset):
                 label_mapped = int(self.labels[idx])
                 img_name = self.names[idx]
                 return feature, label_mapped, img_name
-        else:
+
+        else:   # if not load feature
+
             if self.action == 'test':
                 '''
                 Return (old, indexing by movie):
@@ -308,8 +312,10 @@ class CastDataset(Dataset):
         '''
         - drop_others : only used when aciton = 'train', optional ('val', 'test', 'save' will not drop anyway)
         '''
-        assert action in ('train', 'val', 'test', 'save'), "Wrong params 'action'"
         self.load_feature = load_feature
+        
+        if not action in ('train', 'val', 'test', 'save'):
+            raise ValueError("Wrong params 'action'")
         if load_feature and action == 'save':
             raise ValueError('Cannot save and load features simultanesouly, please choose one of them')
         if load_feature and action == 'test':

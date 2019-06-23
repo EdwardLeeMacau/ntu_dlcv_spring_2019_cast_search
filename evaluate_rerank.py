@@ -129,32 +129,23 @@ def run(cast_feature, cast_name, cast_film, candidate_feature, candidate_name, c
 def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, k1=20, k2=6, lambda_value=0.3) -> list:
     """
       Input
-      - cast_feature:       numpy array[n, 2048] (float)
+      - cast_feature:       numpy array[n, feature_dim] (float)
       - cast_name:          numpy array[n, ] (str)
-      - candidate_feature:  numpy array[m, 2048] (float)
+      - candidate_feature:  numpy array[m, feature_dim] (float)
       - candidate_name:     numpy array[m, ] (str)
     """
+    # cast_feature      = cast_feature.reshape(cast_feaure.shape[0], -1)
+    # candidate_feature = candidate_feature.reshape(candidate_feature.shape[0], -1)
+    
+    cast_feature      = torch.nn.functional.normalize(cast_feature, dim=1)
+    candidate_feature = torch.nn.functional.normalize(candidate_feature, dim=1)
 
-    print("Cast_feat.shape: {}".format(cast_feature.shape))
-    print("Cast_name.shape: {}".format(cast_name.shape))
-    print("Cand_feat.shape: {}".format(candidate_feature.shape))
-    print("Cand_name.shape: {}".format(candidate_name.shape))
-
-    cast_feature      = cast_feature.reshape(cast_feaure.shape[0], -1)
-    candidate_feature = candidate_feature.reshape(candidate_feature.shape[0], -1)
-
-    cast_feature      = normalize_ndarray(cast_feature, 1)
-    candidate_feature = normalize_ndarray(candidate_feature, 1)
-
-    q_g_distance = np.dot(cast_feature, np.transpose(candidate_feature))
-    q_q_distance = np.dot(cast_feature, np.transpose(cast_feature))
-    g_g_distance = np.dot(candidate_feature, np.transpose(candidate_feature))
+    q_g_distance = torch.mm(cast_feature, candidate_feature.transpose(0, 1))
+    q_q_distance = torch.mm(cast_feature, cast_feature.transpose(0, 1))
+    g_g_distance = torch.mm(candidate_feature, candidate_feature.transpose(0, 1))
     
     # Re_ranking() using L2 Distance as the result, smaller distance mean 'closer' with each other
     final_distance = re_ranking(q_g_distance, q_q_distance, g_g_distance, k1=k1, k2=k2, lambda_value=lambda_value)
-
-    print(final_distance)
-    print(index)
 
     result = []
     for j in range(final_distance.shape[0]):
@@ -172,8 +163,7 @@ def predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name, 
     return result
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Evaluate_GPU')
-    # parser.add_argument('--features', type=str, help='directory of the features of cast and candidates.')
+    parser = argparse.ArgumentParser(prog='evaluate_rerank.py', description='Reranking function')
     parser.add_argument('--gt', type=str, help='directory of the gt.json')
     parser.add_argument('--output', type=str, help='directory of the output.csv')
     opt = parser.parse_args()

@@ -1,9 +1,16 @@
+# -*- coding: utf-8 -*-
+"""
+  FileName     [ tri_loss.py ]
+  PackageName  [ final ]
+  Synopsis     [ Self defined triplet loss loading methods. ]
+
+  Example:
+    python3.7 preprocess_features.py --dataroot ./IMDb_resize/
+"""
 import torch
 import torch.nn as nn
 
-criterion = nn.TripletMarginLoss(margin=0.25)
-
-def triplet_loss(inputs, labels: list, cast_num: int, criterion=criterion):
+def triplet_loss(inputs, labels: list, cast_num: int, triplet_criterion, norm_criterion=None):
     """
       Self define triplet loss function.
 
@@ -39,23 +46,12 @@ def triplet_loss(inputs, labels: list, cast_num: int, criterion=criterion):
         n = (index_n == index_p).nonzero().numel()
         index_n[index_n == index_p] = torch.randint(0, cast_num, size=(n, ))
 
-    # print('A')
-    # print(index_a)
-    # print('N')
-    # print(index_n)
-    # print('P')
-    # print(index_p)
-
     # Make the P/N Pairs with index_p and index_n
     x_p, x_n = x_p[index_p], x_p[index_n]
 
-    # print(x_a[0])
-    # print(x_p[0])
-    # print(x_n[0])
-    # print(x_a.shape)
-    # print(x_p.shape)
-    # print(x_n.shape)
-
-    loss = criterion(x_a, x_p, x_n)
-
+    if norm_criterion is not None:
+        loss = triplet_criterion(x_a, x_p, x_n) + norm_criterion(x_a) + norm_criterion(x_n)
+        return loss
+      
+    loss = triplet_criterion(x_a, x_p, x_n)
     return loss

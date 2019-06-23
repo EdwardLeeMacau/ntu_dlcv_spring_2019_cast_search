@@ -5,12 +5,15 @@
   Synopsis     [ To inference trained model with testing images, output csv file ]
 
   Example:
-  - python3 inference_csv.py --dataroot ./IMDb_resize/ --model ./net_best.pth --action test --out_csv ./result.csv --save_feature
+  - python3 inference_csv.py --action test --dataroot ./IMDb_resize/ --model ./net_best.pth --out_csv ./result.csv --save_feature
   >> 
 
+  - python3 inference_csv.py --action val --dataroot ./IMDb_resize/ --model ./net_best.pth --out_csv ./result.csv
+  >> 
 """
 import argparse
 import csv
+import itertools
 import os
 import sys
 
@@ -23,7 +26,6 @@ from torch.utils.data import DataLoader
 
 import evaluate
 import evaluate_rerank
-import evaluate
 import final_eval
 import utils
 from imdb import CandDataset, CastDataset
@@ -34,11 +36,13 @@ newline = '' if sys.platform.startswith('win') else '\n'
 
 def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data, 
          feature_extractor: nn.Module, classifier: nn.Module, 
-         opt, device, feature_dim=1024):
+         opt, device, feature_dim=1024, k1=20, k2=6, lambda_value=0.3, mute=False):
     '''
       Inference by trained model, generated inferenced result if needed.
 
-      Return: None
+      Return: 
+      - mAP if action == 'val'
+      - mAP is 0 for action == 'test'
     '''
     print('Start Inferencing {} dataset ... '.format(opt.action))    
 
@@ -46,6 +50,8 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
     if feature_extractor is not None:
         feature_extractor.eval()
     
+    # Constant setting
+    mAP = 0
     results_cosine = []
     results_rerank = []
 
@@ -64,7 +70,7 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             cast_out = cast_out.detach().cpu().view(-1, feature_dim)
             cast_names = [x[0] for x in cast_names]
             
-            candloader.set_mov_name_test(moviename)
+            cand_data.set_mov_name_val(moviename)
             cand_data.mv = moviename
 
             cand_out = torch.tensor([])
@@ -82,19 +88,18 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
                 cand_out  = torch.cat((cand_out, out), dim=0)
                 cand_names.extend(cand_name)   
         
-            cast_feature = cast_out.to(device)
-            candidate_feature = cand_out.to(device)
+            casts_features = cast_out.to(device)
+            candidates_features = cand_out.to(device)
 
-            print('[Testing]', mov, 'processed ...', cand_out.size()[0])
+            print('[Testing]', moviename, 'processed ...', cand_out.size()[0])
             
             cast_names = np.asarray(cast_names, dtype=object)
             cand_names = np.asarray(cand_names, dtype=object)
 
-
-            result = evaluate.cosine_similarity(casts_features, cast_name, candidate_features, candidate_name)
+            result = evaluate.cosine_similarity(casts_features, cast_names, candidates_features, cand_names, mute=mute)
             results_cosine.extend(result)
-            # result = evaluate_rerank.predict_1_movie(casts_features, cast_name, candidates_features, candidate_name, 
-            #                             k1=opt.k1, k2=opt.k2, lambda_value=0.3)
+            # result = evaluate_rerank.predict_1_movie(casts_features, cast_name, candidates_features, cand_names, 
+            #                             k1=k1, k2=k2, lambda_value=lambda_value)
             results_rerank.extend(result)
 
     # --------------------------------- # 
@@ -156,15 +161,15 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
                 print('imgs_num({}) / file_names({})'.format(cand_out.size()[0], len(cand_names)))
             
             else:   # if load_feature:
-                print("loading {}'s cast features".format(mov))
-                feature_path = './inference/test/{}/cast/features.npy'.format(mov)
-                names_path = './inference/test/{}/cast/names.npy'.format(mov)
+                print("loading {}'s cast features".format(moviename))
+                feature_path = './inference/test/{}/cast/features.npy'.format(moviename)
+                names_path = './inference/test/{}/cast/names.npy'.format(moviename)
                 casts_features = np.load(feature_path)
                 cast_names     = np.load(names_path)
 
-                print("loading {}'s candidate features".format(mov))
-                feature_path = './inference/test/{}/candidates/features.npy'.format(mov)
-                names_path = './inference/test/{}/candidates/names.npy'.format(mov)
+                print("loading {}'s candidate features".format(moviename))
+                feature_path = './inference/test/{}/candidates/features.npy'.format(movienmae)
+                names_path = './inference/test/{}/candidates/names.npy'.format(moviename)
                 candidates_features = np.load(feature_path)
                 cand_names          = np.load(names_path)
 
@@ -173,7 +178,7 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             print('[Testing] {} processing predict_ranking ... \n'.format(moviename))
             
             # predict_ranking
-            result = evaluate.cosine_similarity(casts_features, cast_names, candidates_features, cand_names)
+            result = evaluate.cosine_similarity(casts_features, cast_names, candidates_features, cand_names, mute=mute)
             results_cosine.extend(result)
 
             # result = evaluate_rerank.predict_1_movie(casts_features, cast_names, candidates_features, cand_names,
@@ -186,6 +191,8 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
         for r in results_cosine:
             writer.writerow(r)
 
+    print('Testing output "{}" writed. \n'.format(opt.out_csv))
+
     if opt.action == 'val':
         mAP, AP_dict = final_eval.eval(opt.out_csv, os.path.join(opt.dataroot, "val_GT.json"))
         for key, val in AP_dict.items():
@@ -193,18 +200,7 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             print(record)    
         print('[ mAP = {:.2%} ]\n'.format(mAP))
 
-    return
-
-
-    with open(opt.out_csv, 'w', newline=newline) as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
-        writer.writeheader()
-        for r in results:
-            writer.writerow(r)
-
-    print('Testing output "{}" writed. \n'.format(opt.out_csv))
-
-    return
+    return mAP
 
 def main(opt):
     os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpu
@@ -241,38 +237,82 @@ def main(opt):
 
     test_cand = DataLoader(test_data, batch_size=opt.batchsize, shuffle=False, num_workers=opt.num_workers)
     test_cast = DataLoader(test_cast_data, batch_size=1, shuffle=False, num_workers=opt.num_workers)
-
-    # ------------------------- # 
-    # Model initialize          # 
-    # ------------------------- #
-    feature_extractor = FeatureExtractorFace()# .to(device)
-    classifier = Classifier()# .to(device)
     
-    if opt.model_features:
-        print("Parameter read: {}".format(opt.model_features))
-        feature_extractor = utils.load_network(feature_extractor, opt.model_features).to(device)
+    print(opt)
 
-    if opt.model_classifier:
-        print("Parameter read: {}".format(opt.model_classifier))
-        classifier = utils.load_network(classifier, opt.model_classifier).to(device).to(device)
-
-    # ------------------------- # 
-    # Execute Test Function     # 
-    # ------------------------- #
-    with torch.no_grad():
-        test(test_cast, test_cand, test_cast_data, test_data, 
-            feature_extractor, classifier, opt, device)
+    if not opt.command: # Default validation / inference 
+        # ------------------------- # 
+        # Model initialize          # 
+        # ------------------------- #
+        feature_extractor = FeatureExtractorFace()# .to(device)
+        classifier = Classifier()# .to(device)
         
+        if opt.model_features:
+            print("Parameter read: {}".format(opt.model_features))
+            feature_extractor = utils.load_network(feature_extractor, opt.model_features).to(device)
+
+        if opt.model_classifier:
+            print("Parameter read: {}".format(opt.model_classifier))
+            classifier = utils.load_network(classifier, opt.model_classifier).to(device).to(device)
+
+        # ------------------------- # 
+        # Execute Test Function     # 
+        # ------------------------- #
+        with torch.no_grad():
+            test(test_cast, test_cand, test_cast_data, test_data, 
+                feature_extractor, classifier, opt, device, 
+                k1=20, k2=6, lambda_value=0.3, feature_dim=opt.out_dim, mute=False)
+        
+        return
+    
+    if opt.command == 'rerank':
+        max_length = max([len(opt.k1), len(opt.k2), len(opt.lambda_value)])
+        
+        configs = itertools.product(opt.k1, opt.k2, opt.lambda_value)
+        feature_extractor = FeatureExtractorFace()# .to(device)
+        classifier = Classifier(fc_in_features=2048, fc_out=opt.out_dim)# .to(device)
+        
+        if opt.model_features:
+            print("Parameter read: {}".format(opt.model_features))
+            feature_extractor = utils.load_network(feature_extractor, opt.model_features).to(device)
+
+        if opt.model_classifier:
+            print("Parameter read: {}".format(opt.model_classifier))
+            classifier = utils.load_network(classifier, opt.model_classifier).to(device).to(device)
+
+        # ------------------------- # 
+        # Execute Test Function     # 
+        # ------------------------- #
+        mAPs = []        
+        for k1, k2, value in configs:
+            print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}]".format(k1, k2, value))
+        
+            with torch.no_grad():
+                mAP = test(test_cast, test_cand, test_cast_data, test_data, 
+                    feature_extractor, classifier, opt, device, 
+                    k1=k1, k2=k2, lambda_value=value, feature_dim=opt.out_dim, mute=True)
+                
+            mAPs.append(mAP)
+
+        for (k1, k2, value), mAP in zip(configs, mAPs):
+            print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] mAP: {:.4f}".format(k1, k2, value, mAP))
+        
+
+        return
+
+
+
 if __name__ == '__main__':
     
-    parser = argparse.ArgumentParser(description='Testing')
+    parser = argparse.ArgumentParser(prog='inference_csv.py', description='Testing')
     # Dataset setting
-    parser.add_argument('--batchsize', default=128, type=int, help='batchsize in testing (one movie folder each time) ')
+    parser.add_argument('--batchsize', default=32, type=int, help='batchsize in testing (one movie folder each time) ')
     # I/O Setting (important !!!)
     parser.add_argument('--model_features', help='model checkpoint path to extract features')    # ./model_face/net_best.pth
     parser.add_argument('--model_classifier', help='model checkpoint path to classifier')
     parser.add_argument('--dataroot', default='./IMDb_Resize/', type=str, help='Directory of dataroot')
     parser.add_argument('--action', default='test', type=str, help='action type (test / val)')
+    parser.add_argument('--out_dim', default=1024, type=int, help='to set the output dimensions of FC Layer')
     parser.add_argument('--gt', type=str, help='if gt_file is exists, measure the mAP.')
     parser.add_argument('--out_csv',  default='./inference.csv', help='output csv file name')
     parser.add_argument('--save_feature', action='store_true', help='save new np features when processing')
@@ -280,11 +320,13 @@ if __name__ == '__main__':
     # Device Setting
     parser.add_argument('--gpu', default='0', type=str, help='')
     parser.add_argument('--num_workers', default=0, type=int, help='')
-    # Others Setting
-    parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
+    
     # Rerank Setting
-    parser.add_argument('--k1', default=20, type=int, help='')
-    parser.add_argument('--k2', default=6, type=int, help='')
+    subparser = parser.add_subparsers(dest='command', help='Advanced option')
+    rerank_parser = subparser.add_parser('rerank', help='scanning reranking function')
+    rerank_parser.add_argument('--k1', default=[20], nargs='*', type=int)
+    rerank_parser.add_argument('--k2', default=[6], nargs='*', type=int)
+    rerank_parser.add_argument('--lambda_value', default=[0.3], nargs='*', type=float)
 
     opt = parser.parse_args()
     
@@ -302,10 +344,6 @@ if __name__ == '__main__':
     
     if opt.save_feature and opt.load_feature:
         raise ValueError('Cannot save and load features simultanesouly, please choose one of them')
-    
-    # if opt.model is not None:
-    #     if not os.path.exists(opt.model):
-    #         raise IOError("{} is not exists".format(opt.model))
     
     # if not os.path.exists(opt.gt):
     #     pass
