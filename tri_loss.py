@@ -47,6 +47,10 @@ def triplet_loss(inputs, labels: list, cast_num: int, triplet_criterion, norm_cr
         index_n[index_n == index_p] = torch.randint(0, cast_num, size=(n, ))
 
     # Make the P/N Pairs with index_p and index_n
+    # print("index_n :", index_n)
+    # print("index_p :", index_p)
+    # print("x_p.shape ;", x_p.shape)
+    # print()
     x_p, x_n = x_p[index_p], x_p[index_n]
 
     if norm_criterion is not None:

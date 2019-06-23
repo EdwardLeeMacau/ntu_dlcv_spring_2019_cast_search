@@ -97,12 +97,18 @@ class CandDataset(Dataset):
             self.names_file_all = {}
             self.labels_file_all = {}
 
+            init_mov = ''
             for mov in self.movies:
                 # save all .npy file paths
                 npy_root = os.path.join(data_path, mov, 'candidates')
                 self.features_file_all[mov] = os.path.join(npy_root, 'features.npy')
                 self.names_file_all[mov] = os.path.join(npy_root, 'names.npy')
                 self.labels_file_all[mov] = os.path.join(npy_root, 'labels.npy')
+                init_mov = mov
+            
+            # for initialize self.leng
+            init_names = np.load(self.names_file_all[init_mov])
+            self.leng = len(init_names)
 
         else:
             self.root_path = os.path.dirname(data_path) # IMDb
@@ -183,6 +189,7 @@ class CandDataset(Dataset):
         self.labels = torch.from_numpy(np.load(self.labels_file_all[mov]))        # tensor   (cand_num, )      # int
         self.names = np.load(self.names_file_all[mov])                            # np array (cand_num, )  # str
         self.leng = len(self.names)
+        # print("self.leng :", self.leng)
 
     def __len__(self):
         if self.load_feature:
@@ -342,7 +349,7 @@ class CastDataset(Dataset):
 
             for mov in self.movies:
                 # save all .npy file paths
-                npy_root = os.path.join(data_path, mov, 'candidates')
+                npy_root = os.path.join(data_path, mov, 'cast')
                 self.features_file_all[mov] = os.path.join(npy_root, 'features.npy')
                 self.names_file_all[mov] = os.path.join(npy_root, 'names.npy')
                 self.labels_file_all[mov] = os.path.join(npy_root, 'labels.npy')
@@ -404,7 +411,7 @@ class CastDataset(Dataset):
         if self.load_feature:
             features = torch.from_numpy(np.load(self.features_file_all[moviename]))    # tensor   (cand_num, 2048)  # float
             labels = torch.from_numpy(np.load(self.labels_file_all[moviename]))        # tensor   (cand_num, )      # int
-            names = np.load(self.names_file_all[moviename])                            # np array (cand_num, )  # str
+            names = list(np.load(self.names_file_all[moviename]))                            # np array (cand_num, )  # str
             if self.action == 'train':
                 return features, labels, moviename  #, names
             elif self.action == 'val':
@@ -518,10 +525,11 @@ class CastDataset(Dataset):
 
 def dataloader_unittest(debug=False):
 
-    print('Save mode testing')
-
+    ########################################################
+    ### 1. save dataset testing
+    ########################################################
+    print('"Save" mode testing')
     mode, drop = ('save', False)
-
     '''
         Warn : 
             Dataset : when action = 'save' , will parse all json files recursicely,
@@ -578,8 +586,9 @@ def dataloader_unittest(debug=False):
                 break
             break
 
-    ########################################################3
-
+    ########################################################
+    ### 2. normal dataset testing
+    ########################################################
     for mode, drop in [('train', True), ('val', False), ('test', False)]:
 
         print("Dataset setting, action = {}".format(mode))
@@ -657,6 +666,65 @@ def dataloader_unittest(debug=False):
                 break
 
         print("Finish unit testing of mode {}\n\n".format(mode))
+
+
+    ########################################################
+    ### 3. load feature dataset testing
+    ########################################################
+    for mode, drop in [('train', True), ('val', False)]:
+        print("load feature dataset testing")
+        print("Dataset setting, action = {}".format(mode))
+
+        cand_dataset = CandDataset(
+            data_path = "./feature_np/face/{}".format(mode),
+            action=mode,
+            load_feature=True
+        )
+
+        cast_dataset = CastDataset(
+            data_path = "./feature_np/face/{}".format(mode),
+            action=mode,
+            load_feature=True
+        )
+
+        cand_loader = DataLoader(cand_dataset, batch_size=8, shuffle=False, num_workers=0)
+        cast_loader = DataLoader(cast_dataset, batch_size=1, shuffle=False, num_workers=0)
+
+        print("Length of cast dataset: {}".format(len(cast_dataset)))
+        
+        # cannot test in this way, because len of cand_dataset is decided by moviename dynamicly
+        # print("Length of cand dataset: {}".format(len(cand_dataset)))
+
+        if mode == 'train':
+            for index, (images, labels, moviename) in enumerate(cast_loader, 1):
+                moviename = moviename[0]    # handle key error, moviename = ('tt1345836' ,) to 'tt1345836'
+                cand_dataset.set_mov_name_feature(moviename)
+                for j, (image, label_mapped, index) in enumerate(cand_loader, 1):
+                    print("cast images.shape: {}".format(images.shape))
+                    print("cand 0 image.shape: {}".format(image.shape))
+                    print("cast labels.shape: {}".format(labels.shape))
+                    print("cand label_mapped.shape: {}".format(label_mapped.shape))
+                    print("moviename :", moviename)
+                    print("index :", index)
+                    print()
+                    break
+                break
+        elif mode == 'val':
+            for index, (images, labels, moviename, img_names) in enumerate(cast_loader, 1):
+                moviename = moviename[0]    # handle key error, moviename = ('tt1345836' ,) to 'tt1345836'
+                cand_dataset.set_mov_name_feature(moviename)
+                for j, (image, label_mapped, img_name) in enumerate(cand_loader, 1):
+                    print("cast images.shape: {}".format(images.shape))
+                    print("cand 0 image.shape: {}".format(image.shape))
+                    print("cast labels.shape: {}".format(labels.shape))
+                    print("cand label_mapped.shape: {}".format(label_mapped.shape))
+                    print("moviename :", moviename)
+                    print("img_name :", img_name)
+                    print()
+                    break
+                break       
+
+        print("Finish unit testing of mode {} when load_feature=True\n\n".format(mode))
 
 
 if __name__ == "__main__":
