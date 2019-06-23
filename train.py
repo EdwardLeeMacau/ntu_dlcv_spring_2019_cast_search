@@ -140,7 +140,11 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             cast_out = cast_out.detach().cpu().view(-1, feature_dim)
             
             label_cast = torch.tensor(label_cast).squeeze(0)
+
+            print("\n\ncast_names :", cast_names)
             cast_names = [x[0] for x in cast_names]
+            print("\n\ncast_names :", cast_names, '\n\n')
+
             
             print("[Validating] Number of candidates should be equal to: {}".format(
                 len(os.listdir(os.path.join(opt.dataroot, 'val', mov, 'candidates')))))
@@ -188,6 +192,8 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             # Getting the labels name from dataframe
             # Getting the labels name
             cast_names = np.asarray(cast_names, dtype=object)
+            print("\n\ncast_names :", cast_names, '\n\n')
+            
             candidate_name = np.asarray(cand_names, dtype=object)
             # candidate_df = cand_data.all_candidates[mov]
             # candidate_name = candidate_df['index'].str[-18:-4].to_numpy()
@@ -195,8 +201,8 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             result = evaluate.cosine_similarity(cast_feature, cast_names, candidate_feature, candidate_name)
             results_cosine.extend(result)
 
-            # result = evaluate_rerank.predict_1_movie(cast_feature, cast_name, candidate_feature, candidate_name)
-            results_rerank.extend(result)
+            # result = evaluate_rerank.predict_1_movie(cast_feature, cast_names, candidate_feature, candidate_name)
+            # results_rerank.extend(result)
 
     # Generate the csv with submission format
     with open('result_cosine.csv', 'w', newline=newline) as csvfile:
@@ -205,11 +211,11 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
         for r in results_cosine:
             writer.writerow(r)
     
-    with open('result_rerank.csv', 'w', newline=newline) as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
-        writer.writeheader()
-        for r in results_cosine:
-            writer.writerow(r)
+    # with open('result_rerank.csv', 'w', newline=newline) as csvfile:
+    #     writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+    #     writer.writeheader()
+    #     for r in results_cosine:
+    #         writer.writerow(r)
     
     # Calculate mAP
     mAP, AP_dict = final_eval.eval('result_cosine.csv', os.path.join(opt.dataroot , "val_GT.json"))
@@ -220,8 +226,8 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
         print(record)
         write_record(record, 'val_seperate_AP.txt', opt.log_path)
     
-    mAP, AP_dict = final_eval.eval('result_rerank.csv', os.path.join(opt.dataroot , "val_GT.json"))
-    print('[Rerank] mAP: {:.2%}'.format(mAP))
+    # mAP, AP_dict = final_eval.eval('result_rerank.csv', os.path.join(opt.dataroot , "val_GT.json"))
+    # print('[Rerank] mAP: {:.2%}'.format(mAP))
 
     return mAP, movie_loss / len(candloader)
 

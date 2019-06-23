@@ -101,7 +101,7 @@ class CandDataset(Dataset):
                 npy_root = os.path.join(data_path, mov, 'candidates')
                 self.features_file_all[mov] = os.path.join(npy_root, 'features.npy')
                 self.names_file_all[mov] = os.path.join(npy_root, 'names.npy')
-                self.labels_file_all[mov] = os.path.join(npy_root, 'lables.npy')
+                self.labels_file_all[mov] = os.path.join(npy_root, 'labels.npy')
                 init_mov = mov
             
             # for initialize self.leng
@@ -343,10 +343,10 @@ class CastDataset(Dataset):
 
             for mov in self.movies:
                 # save all .npy file paths
-                npy_root = os.path.join(data_path, mov, 'candidates')
+                npy_root = os.path.join(data_path, mov, 'cast')
                 self.features_file_all[mov] = os.path.join(npy_root, 'features.npy')
                 self.names_file_all[mov] = os.path.join(npy_root, 'names.npy')
-                self.labels_file_all[mov] = os.path.join(npy_root, 'lables.npy')
+                self.labels_file_all[mov] = os.path.join(npy_root, 'labels.npy')
 
         else: # not loading feature
             self.root_path = os.path.dirname(data_path) # IMDb

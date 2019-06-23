@@ -57,8 +57,12 @@ def extractor_features(castloader, candloader, cast_data, cand_data, Feature_ext
             feature_path = './feature_np/{}/{}/{}/cast/'.format(model_name, folder_name, mov)
             os.makedirs(feature_path, exist_ok=True)
             np.save(os.path.join(feature_path, "features.npy"), casts_features)
-            np.save(os.path.join(feature_path, "names.npy"), cast_file_name_list[0])
+            np.save(os.path.join(feature_path, "names.npy"), cast_file_name_list)
             np.save(os.path.join(feature_path, "labels.npy"), cast_labels)
+
+            print("cast_file_name_list :", cast_file_name_list)
+            print('Saved features to {}'.format(feature_path))
+            print('imgs_num({}) / file_names({})\n'.format(cast_out.size()[0], len(cast_file_name_list)))
 
             # 2. Generate candidate features
             print("generating {}'s candidate features".format(mov))
@@ -79,7 +83,7 @@ def extractor_features(castloader, candloader, cast_data, cand_data, Feature_ext
             os.makedirs(feature_path, exist_ok=True)
             np.save(os.path.join(feature_path, "features.npy"), candidates_features)
             np.save(os.path.join(feature_path, "names.npy"), cand_file_name_list)
-            np.save(os.path.join(feature_path, "lables.npy"), label_list)
+            np.save(os.path.join(feature_path, "labels.npy"), label_list)
 
             print('Saved features to {}'.format(feature_path))
             print('imgs_num({}) / file_names({})\n'.format(cand_out.size()[0], len(cand_file_name_list)))
@@ -98,14 +102,14 @@ def main(opt):
     
 
     # get fixed model
-    for model_name in ['face', 'origin']:
+    for model_name in ['origin', 'face']:
         if model_name == 'origin':
             Feature_extractor = FeatureExtractorOrigin().to(device)
         elif model_name == 'face':
             Feature_extractor = FeatureExtractorFace().to(device)
 
         # initialize datasets
-        for folder_name in ['train', 'val']:
+        for folder_name in ['val', 'train']:
             test_data = CandDataset(
                 data_path=os.path.join(opt.dataroot, folder_name), transform=transform1, action='save')
                                         
