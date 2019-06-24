@@ -46,7 +46,7 @@ def main(opts):
         
     for i in range(cand_num):
         cands_img = Image.open(os.path.join(cand_dir, cands[i] + '.jpg'))
-        plt.subplot(1, cand_num + 1, i + 2)
+        plt.subplot(1, cand_num+1, i+2)
         plt.imshow(cands_img)
         plt.axis('off')
     
@@ -54,10 +54,10 @@ def main(opts):
     plt.show()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog='visual.py', description='Demo')
-    parser.add_argument('--cast_name', default='tt1840309_nm0000171', type=str)
-    parser.add_argument('--csv_file', default='./inference/rerank.csv', type=str, help="Read csv_file.csv")
-    parser.add_argument('--test_dir', default='./IMDb_resize/test', type=str, help='./test_data')
+    parser = argparse.ArgumentParser(description='Demo')
+    parser.add_argument('--cast_name', default='tt0053221_nm0000078', type=str)
+    parser.add_argument('--csv_file', default='./rerank.csv',type=str, help="If 'csv_file' contains value, read csv_file.csv")
+    parser.add_argument('--test_dir', default='./IMDb/test', type=str, help='./test_data')
     parser.add_argument('--cand_num', default=5, help='numbers of demo')
 
     parser.add_argument('--show', action='store_true', help='if true, show the resule with GUI')

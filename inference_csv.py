@@ -14,6 +14,8 @@
   # New argparser
   - python3 inference_csv.py --model_features ~ --model_classifier ~ --out_csv ./validatio/ --out_dim 2048 --action val 
                                rerank --k1 20 40 --k2 6 10 --lambda_value 0.15
+
+  - python3.7 inference_csv.py --dataroot ./IMDb_resize/ --model_features ./model_face_4096/resnet50_032.pth --model_classifier ./model_face_4096/classifier_032.pth --out_csv ./validation/ --out_dim 4096 --action val rerank --k1 20 40 --k2 6 10 --lambda_value 0.15
   >>
 """
 import argparse
