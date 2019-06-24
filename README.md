@@ -37,14 +37,6 @@ Given an image of a target query cast and some candidates from gallery, we are r
 </p>
 
 
-## Workflow for naive solution
-### 1. 
-### 2. 
-### 3. 
-
-
-
-
 # Usage of codes to reproduce our results
 ### 0. Cloning the project repository
 To start working on this project, clone this repository into your local machine by using the following command.
@@ -95,14 +87,29 @@ Please run the code below perform validation:
 
     python3 inference_csv.py --action val --out_folder ./inference/val
 
-We have a reranking algorithm, which can provide a large improve of mAP. if using cosine similarity only, the maximum mAP is 47.05% in our experiments. By applying the reranking algorithm, we can get maximum about 11% improves on mAP:
+We have a reranking algorithm, which can provide a large improve of mAP. if using cosine similarity only, the maximum mAP is 47.05% in our experiments. By applying the reranking algorithm, we can get maximum about 11% improves on mAP, and we find that (40, 6, 0.1) work best:
 
-|  k1   |  k2   | lambda | mAP with reranking |
-| :---: | :---: | :----: | :----------------: |
-|  20   |   6   |  0.15  |         x          |
-|  20   |  10   |  0.15  |         x          |
-|  40   |   6   |  0.15  |         x          |
-|  ...  |  ...  |  ...   |        ...         |
+|  k1   |  k2   | lambda |  mAP   |
+| :---: | :---: | :----: | :----: |
+|  40   |   6   |  0.0   | 0.5460 |
+|  40   |   6   |  0.1   | 0.5528 |
+|  40   |   6   |  0.2   | 0.5524 |
+|  40   |   6   |  0.3   | 0.5513 |
+|  40   |   6   |  0.4   | 0.5490 |
+|  40   |   6   |  0.5   | 0.5451 |
+
+|  k1   |  k2   | lambda |  mAP   |
+| :---: | :---: | :----: | :----: |
+|  10   |   6   |  0.1   | 0.5367 |
+|  20   |   6   |  0.1   | 0.5523 |
+|  40   |   6   |  0.1   | 0.5528 |
+|  50   |   6   |  0.1   | 0.5499 |
+
+|  k1   |  k2   | lambda |  mAP   |
+| :---: | :---: | :----: | :----: |
+|  40   |   6   |  0.1   | 0.5528 |
+|  40   |  12   |  0.1   | 0.5498 |
+|  40   |  18   |  0.1   | 0.5387 |
 
 ### 5. Inferencing
 
