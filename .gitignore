@@ -23,6 +23,7 @@
 /features/*
 /pretrain/*
 /preprocess/face.evoLVe.PyTorch/align/__pycache__/*
+preprocess/face.evoLVe.PyTorch/align/__pycache__/*
 /model_face/*
 /log/*
 /feature_np/*
@@ -35,3 +36,4 @@
 *.txt
 *.pth
 *.json
+*.pyc
