@@ -200,8 +200,8 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
             result = evaluate.cosine_similarity(cast_feature, cast_names, candidate_feature, candidate_name)
             results_cosine.extend(result)
 
-            # result = evaluate_rerank.predict_1_movie(cast_feature, cast_names, candidate_feature, candidate_name)
-            # results_rerank.extend(result)
+            result = evaluate_rerank.predict_1_movie(cast_feature, cast_names, candidate_feature, candidate_name)
+            results_rerank.extend(result)
 
     # Generate the csv with submission format
     with open('result_cosine.csv', 'w', newline=newline) as csvfile:
@@ -210,13 +210,22 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
         for r in results_cosine:
             writer.writerow(r)
     
-    # with open('result_rerank.csv', 'w', newline=newline) as csvfile:
-    #     writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
-    #     writer.writeheader()
-    #     for r in results_cosine:
-    #         writer.writerow(r)
-    
-    # Calculate mAP
+    with open('result_rerank.csv', 'w', newline=newline) as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+        writer.writeheader()
+        for r in results_cosine:
+            writer.writerow(r)
+
+    # Calculate mAP with Rerank
+    mAP, AP_dict = final_eval.eval('result_rerank.csv', os.path.join(opt.dataroot , "val_GT.json"))
+    print('[Rerank] mAP: {:.2%}'.format(mAP))
+
+    for key, val in AP_dict.items():
+        record = '[Epoch {}] AP({}): {:.2%}'.format(epoch, key, val)
+        print(record)
+        write_record(record, 'val_seperate_AP.txt', opt.log_path)
+
+    # Calculate mAP with Cosine
     mAP, AP_dict = final_eval.eval('result_cosine.csv', os.path.join(opt.dataroot , "val_GT.json"))
     print('[Cosine] mAP: {:.2%}'.format(mAP))
 
@@ -224,9 +233,6 @@ def val(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
         record = '[Epoch {}] AP({}): {:.2%}'.format(epoch, key, val)
         print(record)
         write_record(record, 'val_seperate_AP.txt', opt.log_path)
-    
-    # mAP, AP_dict = final_eval.eval('result_rerank.csv', os.path.join(opt.dataroot , "val_GT.json"))
-    # print('[Rerank] mAP: {:.2%}'.format(mAP))
 
     return mAP, movie_loss / len(candloader)
 
@@ -336,8 +342,8 @@ def main(opt):
             feature_extractor = FeatureExtractorFace().to(device)
         elif opt.model_name == 'origin':
             feature_extractor = FeatureExtractorOrigin().to(device)
-        params.append({'params': feature_extractor.parameters()})
-        print("Train the model with Feature Extractor + Classifier")
+        # params.append({'params': feature_extractor.parameters()})
+        # print("Train the model with Feature Extractor + Classifier")
     
     optimizer = torch.optim.Adam(params,
         lr=opt.lr,
@@ -352,12 +358,12 @@ def main(opt):
     # ----------------------------------------- #
     # Testing pre-trained model mAP performance #
     # ----------------------------------------- #
-    val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data,
-                            feature_extractor, classifier, val_criterion,
-                            0, opt, device, feature_dim=opt.feature_dim)
-    record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(0, opt.epochs, val_mAP, val_loss)
-    print(record)
-    write_record(record, 'val_mAP.txt', opt.log_path)
+    # val_mAP, val_loss = val(val_cast, val_cand, val_cast_data, val_data,
+    #                         feature_extractor, classifier, val_criterion,
+    #                         0, opt, device, feature_dim=opt.feature_dim)
+    # record = 'Pre-trained Epoch [{}/{}]  Valid_mAP: {:.2%} Valid_loss: {:.4f}\n'.format(0, opt.epochs, val_mAP, val_loss)
+    # print(record)
+    # write_record(record, 'val_mAP.txt', opt.log_path)
 
     # ----------------------------------------- #
     # Training                                  #
@@ -421,21 +427,21 @@ if __name__ == '__main__':
     # Training setting
     parser.add_argument('--batchsize', default=64, type=int, help='batchsize in training')
     parser.add_argument('--lr', default=5e-5, type=float, help='learning rate')
-    parser.add_argument('--milestones', default=[3, 5, 8], nargs='*', type=int)
-    parser.add_argument('--margin', default=[1, 1.2, 1.5], nargs='*', type=int)
+    parser.add_argument('--milestones', default=[3, 5, 10], nargs='*', type=int)
+    parser.add_argument('--margin', default=[1.2, 1.4, 1.6], nargs='*', type=int)
     parser.add_argument('--gamma', default=0.1, type=float)
-    parser.add_argument('--epochs', default=100, type=int)
+    parser.add_argument('--epochs', default=50, type=int)
     parser.add_argument('--weight_decay', default=5e-4, type=float)
     parser.add_argument('--momentum', default=0.9, type=float)
     parser.add_argument('--b1', default=0.9, type=float)
     parser.add_argument('--b2', default=0.999, type=float)
-    parser.add_argument('--feature_dim', default=1024, type=int)
+    parser.add_argument('--feature_dim', default=2048, type=int)
     parser.add_argument('--feature_norm', action='store_true')
     
     # I/O Setting (important !!!)
-    parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
-    parser.add_argument('--log_path', default='log', help='folder to output logs')
-    parser.add_argument('--dataroot', default='./IMDb_Resize/', type=str, help='Directory of dataroot')
+    parser.add_argument('--mpath',  default='./models', help='folder to output images and model checkpoints')
+    parser.add_argument('--log_path', default='./log', help='folder to output logs')
+    parser.add_argument('--dataroot', default='./IMDb_Resize', type=str, help='Directory of dataroot')
     parser.add_argument('--load_features', action='store_true', help='If true, dataloader will load the image in features')
     parser.add_argument('--feature_root', default='./feature_np/face/', type=str, help='Directory of features data root')
     # parser.add_argument('--gt_file', default='./IMDb_Resize/val_GT.json', type=str, help='Directory of training set.')
@@ -446,7 +452,6 @@ if __name__ == '__main__':
     parser.add_argument('--threads', default=0, type=int)
 
     # Others Setting
-    # parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
     parser.add_argument('--log_interval', default=10, type=int)
     parser.add_argument('--save_interval', default=1, type=int, help='Validation and save the network')
 

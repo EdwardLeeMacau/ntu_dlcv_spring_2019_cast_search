@@ -1,5 +1,5 @@
 # Make dataset directory
-if ! [ -d "pretrain" ]; then
+if ! [ -d "./pretrain" ]; then
     mkdir pretrain
 fi
 
