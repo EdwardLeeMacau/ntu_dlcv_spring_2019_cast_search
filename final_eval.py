@@ -71,18 +71,21 @@ def get_mAP(gt_dict, ret_dict):
     return mAP, AP_dict
 
 
-def eval(submission_file, gt_file):
+def eval(submission_file, gt_file, mute=True):
     gt_dict = read_gt(gt_file)
     submission = parse_submission(submission_file)
-    print(len(gt_dict))
-    print(len(submission))
     mAP, AP_dict = get_mAP(gt_dict, submission)
 
-    # for key, val in AP_dict.items():
-    #     print('AP({}): {:.2%}'.format(key, val))
-    print('mAP: {:.2%}'.format(mAP))
+    if not mute:
+        print(len(gt_dict))
+        print(len(submission))
+        
+        for key, val in AP_dict.items():
+            print('AP({}): {:.2%}'.format(key, val))
+        
+        print('mAP: {:.2%}'.format(mAP))
+    
     return mAP, AP_dict
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
