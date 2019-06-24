@@ -22,21 +22,18 @@ import evaluate_rerank
 import final_eval
 import utils
 from imdb import CandDataset, CastDataset
-from model_res50 import (Classifier, FeatureExtractorFace,
-                         FeatureExtractorOrigin)
+from model_res50 import Classifier, FeatureExtractorFace
 
 newline = '' if sys.platform.startswith('win') else '\n'
 
 def cosine(castloader: DataLoader, candloader: DataLoader, cast_data: CastDataset, cand_data: CandDataset, 
-            feature_extractor: nn.Module, classifier: nn.Module, opt, device, feature_dim=2048, mute=True) -> list:
-
-    print('Start Inferencing {} dataset ... '.format(opt.action))
+    feature_extractor: nn.Module, classifier: nn.Module, opt, device, feature_dim=2048, mute=True) -> list:
 
     features = []
     results = []
     
     for i, (cast, _, moviename, cast_names) in enumerate(castloader, 1):
-        print("[{:3d}/{:3d}]".format(i, len(castloader)))
+        print("[{:3d}/{:3d}] {}".format(i, len(castloader), moviename))
 
         moviename = moviename[0]
 
@@ -67,17 +64,17 @@ def cosine(castloader: DataLoader, candloader: DataLoader, cast_data: CastDatase
         casts_features, candidates_features = cast_out.to(device), cand_out.to(device)
         cast_names, cand_names = np.asarray(cast_names, dtype=object), np.asarray(cand_names, dtype=object)
         
-        result = evaluate.cosine_similarity(casts_features, cast_names, candidates_features, cand_names)
+        result = evaluate.cosine_similarity(casts_features, cast_names, candidates_features, cand_names, mute=mute)
         results.extend(result)
         features.append((casts_features, cast_names, candidates_features, cand_names))        
 
     return results, features
 
 def rerank(features, k1=40, k2=6, lambda_value=0.15, mute=True) -> list:
-    print('Start Inferencing {} dataset ... '.format(opt.action))
-
     results = []
-    for casts_features, cast_names, candidates_features, cand_names in features:        
+    for i, (casts_features, cast_names, candidates_features, cand_names) in enumerate(features, 1):
+        # print("[{:3d}/{:3d}]".format(i, len(features)))
+
         result = evaluate_rerank.predict_1_movie(casts_features, cast_names, candidates_features, cand_names, k1=k1, k2=k2, lambda_value=lambda_value)
         results.extend(result)
 
@@ -87,42 +84,36 @@ def main(opt):
     os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpu
     device = torch.device("cuda")
 
-    folder_name = opt.action
-
     # ------------------------- # 
     # Dataset initialize        # 
     # ------------------------- #
-    if opt.load_feature:
-        transform = transforms.ToTensor()
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
 
-    if not opt.load_feature:
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-
-    # Candidate Dataset and DataLOader
-    test_data = CandDataset(
-        data_path=os.path.join(opt.dataroot, folder_name),
+    # Candidate Dataset and DataLoader
+    val_data = CandDataset(
+        data_path=os.path.join(opt.dataroot, 'val'),
         drop_others=False,
         transform=transform,
-        action=opt.action
+        action='val'
     )
         
-    test_cast_data = CastDataset(
-        data_path=os.path.join(opt.dataroot, folder_name),
+    val_cast_data = CastDataset(
+        data_path=os.path.join(opt.dataroot, 'val'),
         drop_others=False,
         transform=transform,
-        action=opt.action
+        action='val'
     )
 
-    test_cand = DataLoader(test_data, batch_size=opt.batchsize, shuffle=False, num_workers=opt.num_workers)
-    test_cast = DataLoader(test_cast_data, batch_size=1, shuffle=False, num_workers=opt.num_workers)
+    val_cand = DataLoader(val_data, batch_size=opt.batchsize, shuffle=False, num_workers=opt.num_workers)
+    val_cast = DataLoader(val_cast_data, batch_size=1, shuffle=False, num_workers=opt.num_workers)
     
     configs = itertools.product(opt.k1, opt.k2, opt.lambda_value)
     
     feature_extractor = FeatureExtractorFace().to(device)
-    classifier = Classifier(fc_in_features=2048, fc_out=opt.out_dim).to(device)
+    classifier = Classifier(fc_in_features=2048, fc_out=opt.feature_dim).to(device)
     
     if opt.model_features:
         print("Parameter read: {}".format(opt.model_features))
@@ -138,8 +129,8 @@ def main(opt):
     # ------------------- # 
     # Cosine Similarity   # 
     # ------------------- #
-    results, features = cosine(test_cast, test_cand, test_cast_data, test_data, 
-        feature_extractor, classifier, opt, device, feature_dim=opt.out_dim, mute=True)
+    results, features = cosine(val_cast, val_cand, val_cast_data, val_data, 
+        feature_extractor, classifier, opt, device, feature_dim=opt.feature_dim, mute=True)
 
     path = os.path.join(opt.out_folder, 'cosine.csv')
 
@@ -150,7 +141,6 @@ def main(opt):
             writer.writerow(r)
 
     print('Testing output "{}" writed. \n'.format(path))
-
     mAP, _ = final_eval.eval(path, opt.gt_file)
     print('[ mAP = {:.2%} ]\n'.format(mAP))
 
@@ -159,8 +149,8 @@ def main(opt):
     # ------------------- #
     mAPs = []
     for k1, k2, value in configs:
-        path = os.path.join(opt.out_folder, '_'.join(('rerank', k1, k2, value)) + '.csv')
-        print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}]".format(k1, k2, value))
+        path = os.path.join(opt.out_folder, '_'.join(('rerank', str(k1), str(k2), str(value))) + '.csv')
+        # print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}]".format(k1, k2, value))
     
         with torch.no_grad():
             results = rerank(features, k1, k2, value, mute=True)
@@ -171,7 +161,7 @@ def main(opt):
             for r in results:
                 writer.writerow(r)
 
-        print('Testing output "{}" writed. \n'.format(path))
+        # print('Testing output "{}" writed. \n'.format(path))
 
         mAP, _ = final_eval.eval(path, opt.gt_file)
         mAPs.append(mAP)
@@ -185,23 +175,18 @@ def main(opt):
 
     return
 
-
-
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(prog='inference_csv.py', description='Testing')
     # Dataset setting
-    parser.add_argument('--batchsize', default=32, type=int, help='batchsize in testing (one movie folder each time) ')
+    parser.add_argument('--batchsize', default=128, type=int, help='batchsize in testing (one movie folder each time) ')
     # I/O Setting (important !!!)
-    parser.add_argument('--model_features', help='model checkpoint path to extract features')    # ./model_face/net_best.pth
-    parser.add_argument('--model_classifier', help='model checkpoint path to classifier')
+    parser.add_argument('--model_features', default='./models/resnet50.pth', help='model checkpoint path to extract features')    # ./model_face/net_best.pth
+    parser.add_argument('--model_classifier', default='./models/classifier.pth', help='model checkpoint path to classifier')
     parser.add_argument('--dataroot', default='./IMDb_Resize', type=str, help='Directory of dataroot')
-    parser.add_argument('--action', default='test', type=str, help='action type (test / val)')
-    parser.add_argument('--out_dim', default=1024, type=int, help='to set the output dimensions of FC Layer')
+    parser.add_argument('--feature_dim', default=2048, type=int, help='Output dimensions of FC Layer')
     parser.add_argument('--gt_file', default='./IMDb_Resize/val_GT.json', type=str, help='if gt_file is exists, measure the mAP.')
     parser.add_argument('--out_folder',  default='./inference', help='output csv folder name')
-    parser.add_argument('--save_feature', action='store_true', help='save new np features when processing')
-    parser.add_argument('--load_feature', action='store_true', help='load old np features when processing')
     # Device Setting
     parser.add_argument('--gpu', default='0', type=str, help='')
     parser.add_argument('--num_workers', default=0, type=int, help='')
@@ -221,13 +206,10 @@ if __name__ == '__main__':
     # Check files exists
     if not os.path.exists(opt.dataroot):
         raise IOError("{} is not exists".format(opt.dataroot))
-    
-    if opt.save_feature and opt.load_feature:
-        raise ValueError('Cannot save and load features simultanesouly, please choose one of them')
-    
-    # if not os.path.exists(opt.gt):
-    #     pass
-    #     raise IOError("{} is not exists".format(opt.gt))
+
+    if not os.path.exists(opt.gt_file):
+        pass
+        raise IOError("{} is not exists".format(opt.gt))
 
     # Execute the main function
     main(opt)
