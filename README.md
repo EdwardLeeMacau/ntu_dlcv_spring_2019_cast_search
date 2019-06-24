@@ -64,14 +64,17 @@ TODO : finish the above args
 
 ### 4. Inferencing
 
+Please run the code below to inference:
+
+    python3 inference_csv.py 
 
 ### 5. Validation : Inference on val set, experimenting params :
-| k1 | k2 | lambda | mAP with cosine similarity | mAP with reranking |
-|:----------:|:-----:|:----------:|:-----:| :-----:|
-| 20  | 6     | 0.15  | x     | x|
-| 20  | 10     | 0.15  | x     | x|
-| 40  | 6    | 0.15  | x     | x|
-| ...        | ...   | ...        | ...   | ...   |
+|  k1   |  k2   | lambda | mAP with cosine similarity | mAP with reranking |
+| :---: | :---: | :----: | :------------------------: | :----------------: |
+|  20   |   6   |  0.15  |             x              |         x          |
+|  20   |  10   |  0.15  |             x              |         x          |
+|  40   |   6   |  0.15  |             x              |         x          |
+|  ...  |  ...  |  ...   |            ...             |        ...         |
 
 
 ### 6. Visualization
@@ -83,8 +86,6 @@ TODO : finish the above args
 Below is a list of packages you are allowed to import in this assignment:
 
 > [`python`](https://www.python.org/): 3.5+  
-> [`tensorflow`](https://www.tensorflow.org/): 1.13  
-> [`keras`](https://keras.io/): 2.2+  
 > [`torch`](https://pytorch.org/): 1.0  
 > [`h5py`](https://www.h5py.org/): 2.9.0  
 > [`numpy`](http://www.numpy.org/): 1.16.2  
@@ -97,3 +98,9 @@ Note that using packages with different versions will very likely lead to compat
 
 
 ### Referrence
+
+1. [Person_reID_baseline_pytorch](https://github.com/layumi/Person_reID_baseline_pytorch)
+
+2. [Re-ranking Person Re-identification with K-reciprocal Encoding](http://openaccess.thecvf.com/content_cvpr_2017/papersZhong_Re-Ranking_Person_Re-Identification_CVPR_2017_paper.pdf)
+
+3. [face.evoLVe: High-Performance Face Recognition Library based on PyTorch](https://github.com/ZhaoJ9014/face.evoLVe.PyTorch)
