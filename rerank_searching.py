@@ -148,30 +148,36 @@ def main(opt):
     # Re-Ranking          # 
     # ------------------- #
     mAPs = []
-    for k1, k2, value in configs:
-        path = os.path.join(opt.out_folder, '_'.join(('rerank', str(k1), str(k2), str(value))) + '.csv')
-        # print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}]".format(k1, k2, value))
+    with open('parameters.txt', 'w') as textfile:
+        for k1, k2, value in configs:
+            path = os.path.join(opt.out_folder, '_'.join(('rerank', str(k1), str(k2), str(value))) + '.csv')
+            # print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}]".format(k1, k2, value))
     
-        with torch.no_grad():
-            results = rerank(features, k1, k2, value, mute=True)
+            with torch.no_grad():
+                results = rerank(features, k1, k2, value, mute=True)
             
-        with open(path, 'w', newline=newline) as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
-            writer.writeheader()
-            for r in results:
-                writer.writerow(r)
+            with open(path, 'w', newline=newline) as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
+                writer.writeheader()
+                for r in results:
+                    writer.writerow(r)
 
-        # print('Testing output "{}" writed. \n'.format(path))
+            # print('Testing output "{}" writed. \n'.format(path))
 
-        mAP, _ = final_eval.eval(path, opt.gt_file)
-        mAPs.append(mAP)
-        print('[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] [ mAP = {:.2%} ]\n'.format(k1, k2, value, mAP))
+            mAP, _ = final_eval.eval(path, opt.gt_file)
+            mAPs.append(mAP)
+            
+            message = '[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] mAP: {:.2%} / {:.2%}'.format(
+                        k1, k2, value, mAP, max(mAPs))
+
+            textfile.write(message + '\n')
+            print(message)
  
     # ------------------- #
     # Print the results   # 
     # ------------------- #
     for (k1, k2, value), mAP in zip(configs, mAPs):
-        print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] [Rerank] mAP: {:.4f}".format(k1, k2, value, mAP))
+        print("[k1: {:3d}, k2: {:3d}, lambda_value: {:.4f}] [Rerank] mAP: {:.2%}".format(k1, k2, value, mAP))
 
     return
 
