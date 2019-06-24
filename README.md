@@ -5,8 +5,10 @@ Deep Learning for Computer Vision (107-2) Group 36
 Given an image of a target query cast and some candidates from gallery, we are requested to search for all the instances belonging to that cast, and sort the result by confidence.
 
 ## Solutions and Experiment
-1. Best Solution : Considered as Human Re-Identification and Re-Ranking problem, Extracting features to calculate distance between people.
-2. Naive Solution : Considered as Classification problem, classifing candidates into different class of people.
+
+### 1. Best Solution : Considered as Human Re-Identification and Re-Ranking problem, Extracting features to calculate distance between people.
+
+### 2. Naive Solution : Considered as Classification problem, classifing candidates into different class of people.
 
 ## Workflow for our best solution : Human Re-Identification and Re-Ranking
 ### 1. Dataset Preprocessing : Cropping faces with pre-trained face detection model (reference : [1] face.evoLVe).
@@ -29,7 +31,7 @@ Given an image of a target query cast and some candidates from gallery, we are r
   <img src="./src/rerank.PNG">
 </p>
 
-### 5. Validation : When inferencing on validation dataset, we has ground truth to calculate mAP scores to measure accuracy of our model.
+### 5. Validation : When inferencing on validation dataset, we has ground truth to calculate mAP scores to measure accuracy of our model. The following picture is the visualization of our infenence reranking result of the testset, and our best mAP on testset from Kaggle leaderboard is 58.897%.
 <p align="center">
   <img src="./src/result.PNG">
 </p>
@@ -56,12 +58,14 @@ In the starter code of this repository, we have provided a shell script for down
 The shell script will automatically download the dataset and store the data in a folder called `IMDB`. Note that this command by default only works on Linux. If you are using other operating systems, you should download the dataset from [this link](https://drive.google.com/drive/folders/1GItzg9wJBiPFrDPBUXQdZgs1ac0Wwbju?usp=sharing
 ) and unzip the compressed file manually. Remember to put the unzip folder in folder named `IMDB`.
 
-### 2 Dataset preprocess: Face Cropping
+### 2. Dataset preprocess: Face Cropping
 Before training, we have cropped the head in the images.  
 (1) Cropping by code
 Execute the image preprocessing by below command
 
-    python3 ./preprocess/face.evoLVe.PyTorch/align/face_align.py --source_root ./IMDb/train --dest_root ./IMDb_resize/train --crop_size 224
+    python3 ./preprocess/face.evoLVe.PyTorch/align/face_align.py --source_root ./IMDb/<dataset_type> --dest_root ./IMDb_resize/<dataset_type> --crop_size 224
+
+⚠️ Remember to change `<dataset_type>` to actual folder name like "train", "val", "test".
 
 (2) Download Cropped dataset directly
 Because cropping dataset is very time consuming, you could download cropped dataset directly from google drive through the following command.
@@ -83,9 +87,13 @@ Then, to reproduce our best model, train the model with the following command.
 
 ### 4. Validation
 
-Please run the code below to validate:
+Please run the code below to download our trained model before performing inference or validation:
+  
+    sh get_model.sh
 
-    python inference_csv.py --action val --out_folder ./inference/val
+Please run the code below perform validation:
+
+    python3 inference_csv.py --action val --out_folder ./inference/val
 
 We have a reranking algorithm, which can provide a large improve of mAP. if using cosine similarity only, the maximum mAP is 47.05% in our experiments. By applying the reranking algorithm, we can get maximum about 11% improves on mAP:
 

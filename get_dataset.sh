@@ -32,7 +32,7 @@ if ! [ -f "./eval.py" ]; then
     wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1Fd-HDBK459ZrfF9YQRIstEXw3L-28IKS' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1Fd-HDBK459ZrfF9YQRIstEXw3L-28IKS" -O ./eval.py && rm -rf /tmp/cookies.txt
 fi
 
-# Remove the downloaded zip file
+# Unzip and remove the downloaded zip file
 unzip "$1/train.zip" -d $1
 unzip "$1/val.zip" -d $1
 unzip "$1/test.zip" -d $1
