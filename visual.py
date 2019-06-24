@@ -57,7 +57,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Demo')
     parser.add_argument('--cast_name', default='tt0053221_nm0000078', type=str)
     parser.add_argument('--csv_file', default='./rerank.csv',type=str, help="If 'csv_file' contains value, read csv_file.csv")
-    parser.add_argument('--test_dir', default='./IMDb_uncropped/test', type=str, help='./test_data')
+    parser.add_argument('--test_dir', default='./IMDb/test', type=str, help='./test_data')
     parser.add_argument('--cand_num', default=5, help='numbers of demo')
 
     parser.add_argument('--show', action='store_true', help='if true, show the resule with GUI')
