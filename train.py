@@ -441,10 +441,10 @@ if __name__ == '__main__':
     # I/O Setting (important !!!)
     parser.add_argument('--mpath',  default='./models', help='folder to output images and model checkpoints')
     parser.add_argument('--log_path', default='./log', help='folder to output logs')
-    parser.add_argument('--dataroot', default='./IMDb_Resize', type=str, help='Directory of dataroot')
+    parser.add_argument('--dataroot', default='./IMDb_resize', type=str, help='Directory of dataroot')
     parser.add_argument('--load_features', action='store_true', help='If true, dataloader will load the image in features')
     parser.add_argument('--feature_root', default='./feature_np/face/', type=str, help='Directory of features data root')
-    # parser.add_argument('--gt_file', default='./IMDb_Resize/val_GT.json', type=str, help='Directory of training set.')
+    # parser.add_argument('--gt_file', default='./IMDb_resize/val_GT.json', type=str, help='Directory of training set.')
     # parser.add_argument('--resume', type=str, help='If true, resume training at the checkpoint')
     
     # Device Setting

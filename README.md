@@ -1,5 +1,4 @@
 # Final Project - Cast Search by Portrait Challenge
-Final Project #2  
 Deep Learning for Computer Vision (107-2) Group 36  
 
 ## Task Definition
@@ -9,20 +8,43 @@ Given an image of a target query cast and some candidates from gallery, we are r
 1. Best Solution : Considered as Human Re-Identification and Re-Ranking problem, Extracting features to calculate distance between people.
 2. Naive Solution : Considered as Classification problem, classifing candidates into different class of people.
 
-## Workflow for best solution
-1. Dataset Preprocessing : Cropping faces with pre-trained face detection model (reference : [1] face.evoLVe).
-2. Model Design : Resnet50 (pretrained with Imagenet or VGGFace2) with fixed weights, and self-designed further features extracting layers.
-3. Training : With Triplet Loss Function, train the model to be able to distinguish the distance between two features from diffrernt faces.
-4. Inferencing : Extract features of all casts and candidates with trained model, and calculate distance between all casts and candidates with either cosine similarity function or re-ranking function. Output the ranking order as csv format finally.
-5. Validation : When inferencing on validation dataset, we has ground truth to calculate mAP scores to measure accuracy of our model.
+## Workflow for our best solution : Human Re-Identification and Re-Ranking
+### 1. Dataset Preprocessing : Cropping faces with pre-trained face detection model (reference : [1] face.evoLVe).
+<p align="center">
+  <img src="./src/preprocess.PNG">
+</p>
+
+### 2. Model Design : Resnet50 (pretrained with Imagenet or VGGFace2) with fixed weights, and self-designed further features extracting layers.
+<p align="center">
+  <img src="./src/model.PNG">
+</p>
+
+### 3. Training : With Triplet Loss Function, train the model to be able to distinguish the distance between two features from diffrernt faces.
+<p align="center">
+  <img src="./src/loss_function.PNG">
+</p>
+
+### 4. Inferencing : Extract features of all casts and candidates with trained model, and calculate distance between all casts and candidates with either cosine similarity function or re-ranking function. Output the ranking order as csv format finally.
+<p align="center">
+  <img src="./src/rerank.PNG">
+</p>
+
+### 5. Validation : When inferencing on validation dataset, we has ground truth to calculate mAP scores to measure accuracy of our model.
+<p align="center">
+  <img src="./src/result.PNG">
+</p>
+
 
 ## Workflow for naive solution
-1. 
-2. 
-3. 
+### 1. 
+### 2. 
+### 3. 
+
+
+
 
 # Usage of codes to reproduce our results
-### 0. Cloning th project repository
+### 0. Cloning the project repository
 To start working on this project, clone this repository into your local machine by using the following command.
 
     git clone https://github.com/dlcv-spring-2019/final-yuchiang_little_fans-list.git
@@ -32,17 +54,16 @@ In the starter code of this repository, we have provided a shell script for down
 
     sh ./get_dataset.sh IMDB
 The shell script will automatically download the dataset and store the data in a folder called `IMDB`. Note that this command by default only works on Linux. If you are using other operating systems, you should download the dataset from [this link](https://drive.google.com/drive/folders/1GItzg9wJBiPFrDPBUXQdZgs1ac0Wwbju?usp=sharing
-) and unzip the compressed file manually.
+) and unzip the compressed file manually. Remember to put the unzip folder in folder named `IMDB`.
 
 ### 2 Dataset preprocess: Face Cropping
-Before training, we have cropped the head in the images.
-
-#### 2.0 Cropping by code
+Before training, we have cropped the head in the images.  
+(1) Cropping by code
 Execute the image preprocessing by below command
 
-    python3 "./preprocess/face.evoLVe.PyTorch/align/face_align.py --source_root ./IMDb/train --dest_root ./IMDb_Resize/train --crop_size 224
+    python3 ./preprocess/face.evoLVe.PyTorch/align/face_align.py --source_root ./IMDb/train --dest_root ./IMDb_resize/train --crop_size 224
 
-#### 2.1 Download Cropped dataset directly
+(2) Download Cropped dataset directly
 Because cropping dataset is very time consuming, you could download cropped dataset directly from google drive through the following command.
 
     sh get_resize_data.sh

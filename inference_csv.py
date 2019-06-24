@@ -328,7 +328,7 @@ if __name__ == '__main__':
     # I/O Setting (important !!!)
     parser.add_argument('--model_features', help='model checkpoint path to extract features')    # ./model_face/net_best.pth
     parser.add_argument('--model_classifier', help='model checkpoint path to classifier')
-    parser.add_argument('--dataroot', default='./IMDb_Resize/', type=str, help='Directory of dataroot')
+    parser.add_argument('--dataroot', default='./IMDb_resize/', type=str, help='Directory of dataroot')
     parser.add_argument('--action', default='test', type=str, help='action type (test / val)')
     parser.add_argument('--out_dim', default=1024, type=int, help='to set the output dimensions of FC Layer')
     parser.add_argument('--gt', type=str, help='if gt_file is exists, measure the mAP.')
