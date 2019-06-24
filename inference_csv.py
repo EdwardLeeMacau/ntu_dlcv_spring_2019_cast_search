@@ -194,8 +194,8 @@ def test(castloader: DataLoader, candloader: DataLoader, cast_data, cand_data,
     
     mAPs = []
     for submission, results in (('cosine.csv', results_cosine), ('rerank.csv', results_rerank)):
-        os.makedirs(opt.out_csv, exist_ok=True)
-        path = os.path.join(opt.out_csv, submission)
+        os.makedirs(opt.out_folder, exist_ok=True)
+        path = os.path.join(opt.out_folder, submission)
     
         with open(path, 'w', newline=newline) as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=['Id', 'Rank'])
@@ -332,7 +332,7 @@ if __name__ == '__main__':
     parser.add_argument('--action', default='test', type=str, help='action type (test / val)')
     parser.add_argument('--out_dim', default=1024, type=int, help='to set the output dimensions of FC Layer')
     parser.add_argument('--gt', type=str, help='if gt_file is exists, measure the mAP.')
-    parser.add_argument('--out_csv',  default='./inference/', help='output csv folder name')
+    parser.add_argument('--out_folder',  default='./inference/', help='output csv folder name')
     parser.add_argument('--save_feature', action='store_true', help='save new np features when processing')
     parser.add_argument('--load_feature', action='store_true', help='load old np features when processing')
     # Device Setting
