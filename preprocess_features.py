@@ -130,7 +130,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Preprocess')
 
     # Dataset setting
-    parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_Resize/', type=str, help='Directory of dataroot')
+    parser.add_argument('--dataroot', default='/media/disk1/EdwardLee/dataset/IMDb_resize/', type=str, help='Directory of dataroot')
     parser.add_argument('--batchsize', default=128, type=int, help='batchsize in testing (one movie folder each time) ')
 
     # Device Setting
