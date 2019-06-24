@@ -430,18 +430,18 @@ if __name__ == '__main__':
     parser.add_argument('--milestones', default=[3, 5, 10], nargs='*', type=int)
     parser.add_argument('--margin', default=[1.2, 1.4, 1.6], nargs='*', type=int)
     parser.add_argument('--gamma', default=0.1, type=float)
-    parser.add_argument('--epochs', default=100, type=int)
+    parser.add_argument('--epochs', default=50, type=int)
     parser.add_argument('--weight_decay', default=5e-4, type=float)
     parser.add_argument('--momentum', default=0.9, type=float)
     parser.add_argument('--b1', default=0.9, type=float)
     parser.add_argument('--b2', default=0.999, type=float)
-    parser.add_argument('--feature_dim', default=1024, type=int)
+    parser.add_argument('--feature_dim', default=2048, type=int)
     parser.add_argument('--feature_norm', action='store_true')
     
     # I/O Setting (important !!!)
-    parser.add_argument('--mpath',  default='models', help='folder to output images and model checkpoints')
-    parser.add_argument('--log_path', default='log', help='folder to output logs')
-    parser.add_argument('--dataroot', default='./IMDb_Resize/', type=str, help='Directory of dataroot')
+    parser.add_argument('--mpath',  default='./models', help='folder to output images and model checkpoints')
+    parser.add_argument('--log_path', default='./log', help='folder to output logs')
+    parser.add_argument('--dataroot', default='./IMDb_Resize', type=str, help='Directory of dataroot')
     parser.add_argument('--load_features', action='store_true', help='If true, dataloader will load the image in features')
     parser.add_argument('--feature_root', default='./feature_np/face/', type=str, help='Directory of features data root')
     # parser.add_argument('--gt_file', default='./IMDb_Resize/val_GT.json', type=str, help='Directory of training set.')
@@ -452,7 +452,6 @@ if __name__ == '__main__':
     parser.add_argument('--threads', default=0, type=int)
 
     # Others Setting
-    # parser.add_argument('--debug', action='store_true', help='use debug mode (print shape)' )
     parser.add_argument('--log_interval', default=10, type=int)
     parser.add_argument('--save_interval', default=1, type=int, help='Validation and save the network')
 
